@@ -1,0 +1,40 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-"
+)
+```
+
+# NMSDE
+
+The NMSDE package provides the collections of necessary functions to implement Nonparametric Spectral Density Estimation (NSDE) for analysing multivariate time series (MTS). NMSDE is a novel non-parametric method to perform spectral analysis of MTS.
+
+# Introduction
+
+To Be Done.
+
+## Installation
+
+You can install NMSDE from github with:
+
+```{r gh-installation, eval = FALSE}
+# install.packages("devtools")
+devtools::install_github("mmadoliat/NMSDE")
+```
+
+## Example
+
+This is a basic example which shows you how to use fssa algorithm for functional time series:
+
+```{r example, eval = TRUE, message=FALSE, warning=FALSE}
+## basic example code
+library(NMSDE)
+plot(1:10)
+```
