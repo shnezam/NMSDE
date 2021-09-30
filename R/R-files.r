@@ -31,8 +31,6 @@ initial<-function(X, nbasis=10, norder=4, R=length(input$model), pen="diff", a=2
            init<-append(init,G2tA(NWG_m,theta_P2,init,R))
            #elbow
            merg.NWF<-matrix(0,nr=init$m,nc=init$P^2*init$K)
-           
-           
            for(i in 1:init$m) merg.NWF[i,]<-as.vector(t(NWF[[i]]))
            #init$elbow<-fviz_nbclust(merg.NWF,FUNcluster=hcut,method="wss",k.max=min(12,init$m-1))+geom_vline(xintercept=R,linetype=2) 
            #get true spectrum
