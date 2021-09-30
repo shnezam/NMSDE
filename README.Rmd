@@ -31,7 +31,7 @@ devtools::install_github("mmadoliat/NMSDE")
 
 ## Example
 
-This is a basic example which shows you how to use fssa algorithm for functional time series:
+This is a basic example which shows you how to use NMSDE algorithm:
 
 ```{r example, eval = TRUE, message=FALSE, warning=FALSE}
 ## basic example code
