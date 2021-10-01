@@ -19,7 +19,7 @@ initial <- function(X, nbasis = 10, norder = 4, R = length(input$model), pen = "
     omegas <- omegas[f.r[1]:f.r[2]]
     K <- length(omegas)
   }
-  indexer <- NMSDE:::Cholindexer(P)
+  indexer <- Cholindexer(P)
 
   # Bases(B splines)[K*L] and Penalty matrix [L*L]
   knots <- seq(omegas[1] - (1 / len), omegas[length(omegas)] + (1 / len), length.out = nbasis - norder + 2)
@@ -47,7 +47,7 @@ initial <- function(X, nbasis = 10, norder = 4, R = length(input$model), pen = "
   # get initial values by projecting the Cholesky components (NW) onto the linear subspace (of the basis)
   init <- append(init, G2tA(NWG_m, theta_P2, init, R))
   # elbow
-  merg.NWF <- matrix(0, nr = init$m, nc = init$P^2 * init$K)
+  merg.NWF <- matrix(0, nrow = init$m, ncol = init$P^2 * init$K)
   for (i in 1:init$m) merg.NWF[i, ] <- as.vector(t(NWF[[i]]))
   # init$elbow<-fviz_nbclust(merg.NWF,FUNcluster=hcut,method="wss",k.max=min(12,init$m-1))+geom_vline(xintercept=R,linetype=2)
   # get true spectrum
@@ -63,12 +63,12 @@ initial <- function(X, nbasis = 10, norder = 4, R = length(input$model), pen = "
 #' @export time2freq
 time2freq <- function(x, init) {
   # for tildeX
-  tildex <- matrix(0, nr = init$P, nc = ncol(x))
+  tildex <- matrix(0, nrow = init$P, ncol = ncol(x))
   for (p in 1:init$P) tildex[p, ] <- (fft(x[p, ])) / sqrt(ncol(x))
   tildex <- tildex[, (init$f.r[1] + 1):(init$f.r[2] + 1)]
 
   # for perds
-  perds <- matrix(0, nr = init$P^2, nc = init$K)
+  perds <- matrix(0, nrow = init$P^2, ncol = init$K)
   for (k in 1:init$K) {
     P_mat <- tildex[, k] %*% (Conj(t(tildex[, k])))
     for (p in 1:init$Nreal) perds[p, k] <- Re(P_mat[init$indexer[p, 3], init$indexer[p, 4]])
@@ -82,7 +82,7 @@ time2freq <- function(x, init) {
 NWspec <- function(x, init) {
   logh <- 2 * log(20 / init$K)
   h <- exp(logh)
-  hatF <- matrix(0, nr = init$P^2, nc = init$K)
+  hatF <- matrix(0, nrow = init$P^2, ncol = init$K)
 
   # smooth the periodogram
   for (k in 1:init$K) {
@@ -102,7 +102,7 @@ Chol <- function(f) {
     fkk <- f[k, k]
     gk <- solve(Gw, fk)
     gkk <- sqrt(fkk - ((Conj(t(gk))) %*% gk))
-    Gw <- rbind(cbind(Gw, matrix(0, nr = nrow(as.matrix(Gw)), ncol = 1)), cbind(Conj(t(gk)), gkk))
+    Gw <- rbind(cbind(Gw, matrix(0, nrow = nrow(as.matrix(Gw)), ncol = 1)), cbind(Conj(t(gk)), gkk))
   }
   return(Gw)
 }
@@ -112,10 +112,10 @@ Chol <- function(f) {
 #' @export spec2inChol
 spec2inChol <- function(spec, init) {
   P2 <- init$P^2
-  inChol <- matrix(0, nr = P2, nc = init$K)
+  inChol <- matrix(0, nrow = P2, ncol = init$K)
   for (k in 1:init$K) {
     # spectral matrix at freq k
-    F_k <- matrix(0, nr = init$P, nc = init$P)
+    F_k <- matrix(0, nrow = init$P, ncol = init$P)
     for (p in 1:init$Nreal) {
       F_k[init$indexer[p, 3], init$indexer[p, 4]] <- spec[p, k]
       F_k[init$indexer[p, 4], init$indexer[p, 3]] <- spec[p, k]
@@ -137,10 +137,10 @@ spec2inChol <- function(spec, init) {
 #' @export inChol2spec
 inChol2spec <- function(inChol, init) {
   P2 <- init$P^2
-  spec <- matrix(0, nr = P2, nc = init$K)
+  spec <- matrix(0, nrow = P2, ncol = init$K)
   for (k in 1:init$K) {
     # inv cholesky at freq k
-    cholMat <- matrix(0, nr = init$P, nc = init$P)
+    cholMat <- matrix(0, nrow = init$P, ncol = init$P)
     for (p in 1:init$Nreal) cholMat[init$indexer[p, 3], init$indexer[p, 4]] <- inChol[p, k]
     for (p in (init$Nreal + 1):P2) cholMat[init$indexer[p, 3], init$indexer[p, 4]] <- cholMat[init$indexer[p, 3], init$indexer[p, 4]] + 1i * inChol[p, k]
 
@@ -159,7 +159,7 @@ psd <- function(Phi, sigma, init) {
   P2 <- init$P^2
   # psd at freq w
   F <- function(w) {
-    A <- matrix(0, nr = init$P, nc = init$P)
+    A <- matrix(0, nrow = init$P, ncol = init$P)
     for (j in 1:(length(Phi))) A <- A + (Phi[[j]] * exp(-2 * pi * 1i * w * (j - 1)))
     invA <- solve(A)
     f <- invA %*% sigma %*% Conj(t(invA))
@@ -168,7 +168,7 @@ psd <- function(Phi, sigma, init) {
 
   Flist <- lapply(init$omegas, F)
   # vectorize P*P spectral matrix at all frequencies(Flist) and get a P2*K matrix(spec)
-  spec <- matrix(0, nr = P2, nc = init$K)
+  spec <- matrix(0, nrow = P2, ncol = init$K)
   for (k in 1:init$K) {
     for (p in 1:init$Nreal) spec[p, k] <- Re(Flist[[k]][init$indexer[p, 3], init$indexer[p, 4]])
     for (p in (init$Nreal + 1):P2) spec[p, k] <- Im(Flist[[k]][init$indexer[p, 3], init$indexer[p, 4]])
@@ -181,11 +181,11 @@ psd <- function(Phi, sigma, init) {
 #' @export loglike
 loglike <- function(thetas, As, lambda, init) {
   hatG_m <- tA2G(thetas, As, init)
-  l <- matrix(0, nr = init$K, nc = nrow(As))
+  l <- matrix(0, nrow = init$K, ncol = nrow(As))
   for (i in 1:nrow(As)) {
     for (k in 1:init$K) {
       # get the inverse cholesky matrix
-      Cholmat_i <- matrix(0, nr = init$P, nc = init$P)
+      Cholmat_i <- matrix(0, nrow = init$P, ncol = init$P)
       for (p in 1:init$Nreal) Cholmat_i[init$indexer[p, 3], init$indexer[p, 4]] <- hatG_m[p, k, i]
       for (p in (init$Nreal + 1):init$P^2) Cholmat_i[init$indexer[p, 3], init$indexer[p, 4]] <- Cholmat_i[init$indexer[p, 3], init$indexer[p, 4]] + 1i * hatG_m[p, k, i]
       # get the loglikelihood
@@ -253,7 +253,7 @@ iterate <- function(init, lambda = 0, a = 2, eps = 0.5, n.iter = 100, which.spec
       } else if (is.matrix(init$thetas)) {
         Lambda[[l + 1]] <- 1 / (diag(t(thetas.lst[[(l)]]) %*% init$D %*% thetas.lst[[(l)]]) / (as.vector(workvals$DF) - (a - 1))) # lambda_R(vector)
       } else {
-        diagtemp <- matrix(0, nr = init$P^2, nc = ncol(init$thetas))
+        diagtemp <- matrix(0, nrow = init$P^2, ncol = ncol(init$thetas))
         for (r in 1:ncol(init$thetas)) {
           diagtemp[, r] <- diag(t(thetas.lst[[(l)]][, r, ]) %*% init$D %*% thetas.lst[[(l)]][, r, ])
         }
@@ -262,7 +262,7 @@ iterate <- function(init, lambda = 0, a = 2, eps = 0.5, n.iter = 100, which.spec
         } else if (is.vector(lambda)) {
           Lambda[[l + 1]] <- 1 / (apply(diagtemp, 1, sum) / (apply(workvals$DF, 1, sum) - (a - 1))) # lambda_P2(vector)
         } else {
-          Lambda[[l + 1]] <- matrix(0, nr = init$P^2, nc = ncol(init$thetas))
+          Lambda[[l + 1]] <- matrix(0, nrow = init$P^2, ncol = ncol(init$thetas))
           for (r in 1:ncol(init$thetas)) Lambda[[l + 1]][, r] <- 1 / (diagtemp[, r] / (workvals$DF[, r] - (a - 1))) # lambda_P2*R(matrix)
         }
       }
@@ -280,8 +280,8 @@ iterate <- function(init, lambda = 0, a = 2, eps = 0.5, n.iter = 100, which.spec
 #----------------------------------------------------------------------------------------------
 ## plot.sds
 # Plots estimate of the components spectral matrix and True PSDs
-#' @export plot.sds
-plot.sds <- function(res, init) {
+#' @export plot_sds
+plot_sds <- function(res, init) {
   par(mfrow = c(init$P, init$P), oma = c(0.5, 0.5, 2.5, 0.5))
   if (!is.null(res$which.spec)) {
     init$m <- length(res$which.spec)
@@ -303,10 +303,10 @@ plot.sds <- function(res, init) {
 # [,4]: column number (1,...,(row number)); [,5]: index of diagonal elements {1,0}
 Cholindexer <- function(P) {
   Nreal <- P * (P + 1) / 2
-  indexer <- matrix(0, nr = P^2, nc = 5)
+  indexer <- matrix(0, nrow = P^2, ncol = 5)
   indexer[, 1] <- 1:P^2
   indexer[1:Nreal, 2] <- 1
-  bigguy <- matrix(c(kronecker(rep(1, P), 1:P), kronecker(1:P, rep(1, P))), nr = P^2)
+  bigguy <- matrix(c(kronecker(rep(1, P), 1:P), kronecker(1:P, rep(1, P))), nrow = P^2)
   indexer[1:Nreal, 3:4] <- bigguy[bigguy[, 1] >= bigguy[, 2], ]
   indexer[(Nreal + 1):P^2, 3:4] <- bigguy[bigguy[, 1] > bigguy[, 2], ]
   indexer[indexer[, 3] == indexer[, 4], 5] <- 1
@@ -319,7 +319,7 @@ drivG <- function(init) {
   # Derivative of Cholesky components(G) w.r.t. its vectorized elements(vecG)
   dG <- list()
   for (p in 1:init$P^2) {
-    dGp <- matrix(0, nr = init$P, nc = init$P)
+    dGp <- matrix(0, nrow = init$P, ncol = init$P)
     dGp[init$indexer[p, 3], init$indexer[p, 4]] <- init$indexer[p, 2] + (1 - init$indexer[p, 2]) * 1i
     dG[[p]] <- dGp
   }
@@ -415,23 +415,23 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init) {
   P2 <- init$P^2
   R <- ncol(init$thetas)
   if (!is.matrix(thetas)) {
-    U.theta <- matrix(0, nr = nbasis * P2, nc = R)
+    U.theta <- matrix(0, nrow = nbasis * P2, ncol = R)
     H.theta <- array(0, dim = c(nbasis * P2, nbasis * P2, R))
     F.theta <- array(0, dim = c(nbasis * P2, nbasis * P2, R))
     tmp1i <- F.theta
-    theta.chng <- matrix(0, nr = nbasis * P2, nc = R)
+    theta.chng <- matrix(0, nrow = nbasis * P2, ncol = R)
     curr.thetas <- array(0, dim = c(nbasis, R, P2))
     theta_L.P2_R <- apply(thetas, 2, as.vector) # L*R*P2 array (thetas) into L.P2*R matrix
   } else {
-    U.theta <- matrix(0, nr = nbasis, nc = R)
+    U.theta <- matrix(0, nrow = nbasis, ncol = R)
     H.theta <- array(0, dim = c(nbasis, nbasis, R))
     F.theta <- array(0, dim = c(nbasis, nbasis, R))
     tmp1i <- F.theta
-    theta.chng <- matrix(0, nr = nbasis, nc = R)
-    curr.thetas <- matrix(0, nr = nbasis, nc = R)
+    theta.chng <- matrix(0, nrow = nbasis, ncol = R)
+    curr.thetas <- matrix(0, nrow = nbasis, ncol = R)
   }
 
-  A.chng <- matrix(0, nr = R * P2, nc = nrow(As))
+  A.chng <- matrix(0, nrow = R * P2, ncol = nrow(As))
   curr.As <- array(0, dim = c(nrow(As), R, P2))
   A_R.P2_m <- apply(As, 1, as.vector) # m*R*P2 array (As) into R.P2*m matrix
   hatG_m <- tA2G(thetas, As, init)
@@ -440,12 +440,12 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init) {
 
   for (i in 1:nrow(As)) {
     # get the score,Hessian and negative Fisher matrices for A
-    U.A_i <- matrix(0, nr = R * P2, nc = 1)
+    U.A_i <- matrix(0, nrow = R * P2, ncol = 1)
     FA_k_i <- array(0, dim = c(R, P2, R, P2, init$K))
     HA_k_i <- array(0, dim = c(R, P2, R, P2, init$K))
-    G_i <- matrix(0, nr = init$P, nc = init$P)
-    F_i <- matrix(0, nr = init$P, nc = init$P)
-    temp1_i <- matrix(0, nr = P2, nc = init$K) # components of the first derivative of loglikelihood w.r.t Cholesky components(vecG)
+    G_i <- matrix(0, nrow = init$P, ncol = init$P)
+    F_i <- matrix(0, nrow = init$P, ncol = init$P)
+    temp1_i <- matrix(0, nrow = P2, ncol = init$K) # components of the first derivative of loglikelihood w.r.t Cholesky components(vecG)
     temp4_i <- array(0, dim = c(nbasis, P2, init$K, R)) # components of the first derivative of loglikelihood w.r.t thetas (chain rule)
     temp6_i <- array(0, dim = c(nbasis, P2, nbasis, P2, init$K, R)) # components of the second derivative of loglikelihood w.r.t thetas (chain rule)
     temp9_i <- array(0, dim = c(nbasis, P2, nbasis, P2, init$K, R)) # components of negative Fisher matrix for thetas (expectation of Hessian)
@@ -465,14 +465,14 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init) {
         F_i[init$indexer[p, 4], init$indexer[p, 3]] <- F_i[init$indexer[p, 4], init$indexer[p, 3]] - 1i * spec[p, k, i]
       }
 
-      UA_k_i <- matrix(0, nr = R, nc = P2)
-      temp2_k_i <- matrix(0, nr = P2, nc = P2)
+      UA_k_i <- matrix(0, nrow = R, ncol = P2)
+      temp2_k_i <- matrix(0, nrow = P2, ncol = P2)
       temp3_k_i <- temp2_k_i
       temp8_k_i <- temp2_k_i
 
       b <- max(which(init$knots <= init$omegas[k])) # select nonzero basis at freq k
       if (!is.matrix(thetas)) {
-        B.theta_k <- matrix(0, nr = R, nc = P2)
+        B.theta_k <- matrix(0, nrow = R, ncol = P2)
         for (j in 1:P2) for (r in 1:R) B.theta_k[r, j] <- sum(init$B[k, b:(norder + b - 1)] * thetas[b:(norder + b - 1), r, j])
       } else {
         B.theta_k <- rep(0, 0)
@@ -543,8 +543,8 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init) {
 
     if (i == nrow(As)) {
       if (!is.matrix(thetas)) {
-        DF <- matrix(0, nr = P2, nc = R)
-        if (is.vector(lambda)) lambda <- matrix(lambda, nr = P2, nc = R)
+        DF <- matrix(0, nrow = P2, ncol = R)
+        if (is.vector(lambda)) lambda <- matrix(lambda, nrow = P2, ncol = R)
         for (r in 1:R) {
           tmp1i[, , r] <- solve(F.theta[, , r] + kronecker(diag(lambda[, r], P2), init$D))
           theta.chng[, r] <- tmp1i[, , r] %*% (U.theta[, r] + kronecker(diag(lambda[, r], P2), init$D) %*% theta_L.P2_R[, r])
@@ -568,10 +568,10 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init) {
   counter <- 0
   while (repit) {
     tau <- (0.5)^counter
-    for (i in 1:nrow(As)) curr.As[i, , ] <- matrix(A_R.P2_m[, i] - tau * A.chng[, i], nr = R, nc = P2)
+    for (i in 1:nrow(As)) curr.As[i, , ] <- matrix(A_R.P2_m[, i] - tau * A.chng[, i], nrow = R, ncol = P2)
 
     if (!is.matrix(thetas)) {
-      for (r in 1:R) curr.thetas[, r, ] <- matrix(theta_L.P2_R[, r] - tau * theta.chng[, r], nr = nbasis, nc = P2)
+      for (r in 1:R) curr.thetas[, r, ] <- matrix(theta_L.P2_R[, r] - tau * theta.chng[, r], nrow = nbasis, ncol = P2)
     } else {
       for (r in 1:R) curr.thetas[, r] <- thetas[, r] - tau * theta.chng[, r]
     }
