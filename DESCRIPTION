@@ -5,14 +5,14 @@ Version: 0.0.1
 Authors@R: c(
     person("Shirin", "Nezampour", email = "shirin.nezampour@marquette.edu", role = c("aut", "cre")),
     person("Mehdi", "Maadooliat", email = "mehdi.maadooliat@marquette.edu", role = "aut"))
-Maintainer: Shirin Nezampour <shirin.nezampour@marquette.edu>
-URL: https://github.com/mmadoliat/NMSDE.git
+Maintainer: Shirin Nezampour <sh.nezampour@gmail.com>
+URL: https://github.com/shnezam/NMSDE.git
 Description: Methods and tools for implementing nonparametric multivariate spectral density estimation
     as described in Nezampour S., Maadooliat M. (Submitted). Nonparametric Multivariate Spectral Density Estimation. Manuscript under prepration. 
 License: GPL (>= 2)
 Encoding: UTF-8
 LazyData: TRUE
-RoxygenNote: 7.1.1
+RoxygenNote: 7.1.2
 Imports: Rcpp,
          dse,
          vars,
