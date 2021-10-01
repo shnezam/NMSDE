@@ -14,7 +14,7 @@ knitr::opts_chunk$set(
 
 # NMSDE
 
-The NMSDE package provides the collections of necessary functions to implement Nonparametric Spectral Density Estimation (NSDE) for analysing multivariate time series (MTS). NMSDE is a novel non-parametric method to perform spectral analysis of MTS.
+The NMSDE package provides the collections of necessary functions to implement Nonparametric Spectral Density Estimation (NSDE) for analyzing multivariate time series (MTS). NMSDE is a novel non-parametric method to perform spectral analysis of MTS.
 
 # Introduction
 
