@@ -5,7 +5,7 @@
 #' @useDynLib NMSDE, .registration = TRUE
 #' @export initial
 initial <- function(X, nbasis = 10, norder = 4, R = length(input$model), pen = "diff", a = 2, theta_P2 = T, tru = NULL, f.r = NULL) {
-  # set up some basic values
+   # set up some basic values
   P <- nrow(X[[1]])
   P2 <- P^2
   Nreal <- P * (P + 1) / 2
