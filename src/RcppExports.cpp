@@ -49,7 +49,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // loglike_c_cube
-List loglike_c_cube(arma::cube thetas, arma::cube As, arma::vec lambda, List init);
+Rcpp::List loglike_c_cube(arma::cube thetas, arma::cube As, arma::vec lambda, Rcpp::List init);
 RcppExport SEXP _NMSDE_loglike_c_cube(SEXP thetasSEXP, SEXP AsSEXP, SEXP lambdaSEXP, SEXP initSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -57,13 +57,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< arma::cube >::type thetas(thetasSEXP);
     Rcpp::traits::input_parameter< arma::cube >::type As(AsSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type lambda(lambdaSEXP);
-    Rcpp::traits::input_parameter< List >::type init(initSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type init(initSEXP);
     rcpp_result_gen = Rcpp::wrap(loglike_c_cube(thetas, As, lambda, init));
     return rcpp_result_gen;
 END_RCPP
 }
 // Workingfish_cube
-List Workingfish_cube(arma::cube thetas, arma::cube As, arma::vec lambda, List init);
+Rcpp::List Workingfish_cube(arma::cube thetas, arma::cube As, arma::vec lambda, Rcpp::List init);
 RcppExport SEXP _NMSDE_Workingfish_cube(SEXP thetasSEXP, SEXP AsSEXP, SEXP lambdaSEXP, SEXP initSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -71,8 +71,49 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< arma::cube >::type thetas(thetasSEXP);
     Rcpp::traits::input_parameter< arma::cube >::type As(AsSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type lambda(lambdaSEXP);
-    Rcpp::traits::input_parameter< List >::type init(initSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type init(initSEXP);
     rcpp_result_gen = Rcpp::wrap(Workingfish_cube(thetas, As, lambda, init));
+    return rcpp_result_gen;
+END_RCPP
+}
+// tA2G_c_mat
+arma::cube tA2G_c_mat(arma::mat thetas, arma::cube As, Rcpp::List init);
+RcppExport SEXP _NMSDE_tA2G_c_mat(SEXP thetasSEXP, SEXP AsSEXP, SEXP initSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type thetas(thetasSEXP);
+    Rcpp::traits::input_parameter< arma::cube >::type As(AsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type init(initSEXP);
+    rcpp_result_gen = Rcpp::wrap(tA2G_c_mat(thetas, As, init));
+    return rcpp_result_gen;
+END_RCPP
+}
+// loglike_c_mat
+Rcpp::List loglike_c_mat(arma::mat thetas, arma::cube As, arma::vec lambda, Rcpp::List init);
+RcppExport SEXP _NMSDE_loglike_c_mat(SEXP thetasSEXP, SEXP AsSEXP, SEXP lambdaSEXP, SEXP initSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type thetas(thetasSEXP);
+    Rcpp::traits::input_parameter< arma::cube >::type As(AsSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type init(initSEXP);
+    rcpp_result_gen = Rcpp::wrap(loglike_c_mat(thetas, As, lambda, init));
+    return rcpp_result_gen;
+END_RCPP
+}
+// Workingfish_mat
+Rcpp::List Workingfish_mat(arma::mat thetas, arma::cube As, arma::vec lambda, Rcpp::List init);
+RcppExport SEXP _NMSDE_Workingfish_mat(SEXP thetasSEXP, SEXP AsSEXP, SEXP lambdaSEXP, SEXP initSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type thetas(thetasSEXP);
+    Rcpp::traits::input_parameter< arma::cube >::type As(AsSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type init(initSEXP);
+    rcpp_result_gen = Rcpp::wrap(Workingfish_mat(thetas, As, lambda, init));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -83,6 +124,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_NMSDE_tA2G_c_cube", (DL_FUNC) &_NMSDE_tA2G_c_cube, 3},
     {"_NMSDE_loglike_c_cube", (DL_FUNC) &_NMSDE_loglike_c_cube, 4},
     {"_NMSDE_Workingfish_cube", (DL_FUNC) &_NMSDE_Workingfish_cube, 4},
+    {"_NMSDE_tA2G_c_mat", (DL_FUNC) &_NMSDE_tA2G_c_mat, 3},
+    {"_NMSDE_loglike_c_mat", (DL_FUNC) &_NMSDE_loglike_c_mat, 4},
+    {"_NMSDE_Workingfish_mat", (DL_FUNC) &_NMSDE_Workingfish_mat, 4},
     {NULL, NULL, 0}
 };
 

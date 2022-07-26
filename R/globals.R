@@ -1,1 +1,0 @@
-utils::globalVariables(c("Workingfish_mat", "ini", "input"))
