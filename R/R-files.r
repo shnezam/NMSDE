@@ -26,11 +26,22 @@ initial <- function(X, nbasis = 10, norder = 4, R = length(input$model),
   }
   
   indexer <- Cholindexer(P)
-
+  
   # Bases(B splines)[K*L] and Penalty matrix [L*L]
-  knots <- seq(omegas[1] - (1 / len), omegas[length(omegas)] + (1 / len), 
+  knots <- seq(omegas[1] - (1 / len), omegas[length(omegas)] + (1 / len),
                length.out = nbasis - norder + 2)
   B <- fda::bsplineS(omegas, breaks = knots, norder = norder)
+  #B1 <- pbs(omegas, knots = knots, degree = 3, intercept = FALSE,
+  #Boundary.knots = range(omegas), periodic = TRUE)
+  
+  # Define parameters for the Fourier basis
+  
+  # Create a Fourier basis
+  # knots <- seq(omegas[1] - (1 / len), omegas[length(omegas)] + (1 / len), 
+  #              length.out = nbasis)
+  # fourierbasis <- fda::create.fourier.basis(rangeval = c(min(knots), max(knots)), nbasis = length(knots))
+  # B <- eval.basis(omegas, fourierbasis)
+  # nbasis <- ncol(B)
   
   # Penalty functions
   if (pen == "diff") {
@@ -43,7 +54,7 @@ initial <- function(X, nbasis = 10, norder = 4, R = length(input$model),
   } else {
     D <- fda::bsplinepen(fda::create.bspline.basis(nbasis = nbasis, norder = norder))
   }
-
+  
   init <- list(P = P, m = m, K = K, omegas = omegas, f.r = f.r, B = B, D = D, 
                indexer = indexer, Nreal = Nreal, knots = knots)
   
@@ -56,8 +67,7 @@ initial <- function(X, nbasis = 10, norder = 4, R = length(input$model),
   # Nadaraya-Watson kernel estimate of spectral matrix
   NWF <- lapply(X, NWspec, init)
   init$NW <- NWF
-  
-   # Cholesky components of inverse of Nadaraya-Watson estimate
+  # Cholesky components of inverse of Nadaraya-Watson estimate
   NWG_m <- sapply(NWF, spec2inChol, init, simplify = "array")
   
   # get initial values by projecting the Cholesky components (NW) 
@@ -67,16 +77,16 @@ initial <- function(X, nbasis = 10, norder = 4, R = length(input$model),
   # elbow
   merg.NWF <- matrix(0, nrow = init$m, ncol = init$P^2 * init$K)
   for (i in 1:init$m) merg.NWF[i, ] <- as.vector(t(NWF[[i]]))
-  # init$elbow<-fviz_nbclust(merg.NWF,FUNcluster=hcut,method="wss",k.max=min(12,init$m-1))+geom_vline(xintercept=R,linetype=2)
+  #init$elbow<-fviz_nbclust(merg.NWF,FUNcluster=hcut,method="wss",k.max=min(12,init$m-1))+geom_vline(xintercept=R,linetype=2)
   
- 
+  
   # get true spectrum
   if (!is.null(tru)) {
     init$truspec <- sapply(tru$parasmdl, psd, init, simplify = "array")
     
     init$rnd <- tru$rnd
   }
-  #browser()
+  
   return(init)
 }
 
@@ -89,7 +99,7 @@ time2freq <- function(x, init) {
   tildex <- matrix(0, nrow = init$P, ncol = ncol(x))
   for (p in 1:init$P) tildex[p, ] <- (fft(x[p, ])) / sqrt(ncol(x))
   tildex <- tildex[, (init$f.r[1] + 1):(init$f.r[2] + 1)]
-
+  
   # for perds
   perds <- matrix(0, nrow = init$P^2, ncol = init$K)
   for (k in 1:init$K) {
@@ -113,7 +123,7 @@ NWspec <- function(x, init) {
   logh <- 2 * log(20 / init$K)
   h <- exp(logh)
   hatF <- matrix(0, nrow = init$P^2, ncol = init$K)
-
+  
   # smooth the periodogram
   for (k in 1:init$K) {
     z <- kerf((init$omegas[k] - init$omegas) / h)
@@ -207,7 +217,7 @@ inChol2spec <- function(inChol, init) {
     for (p in (init$Nreal + 1):P2){
       cholMat[init$indexer[p, 3], init$indexer[p, 4]] <- cholMat[init$indexer[p, 3], init$indexer[p, 4]] + 1i * inChol[p, k]
     }
-   
+    
     # spec matrix at freq k
     F_k <- solve(cholMat %*% Conj(t(cholMat)))
     
@@ -218,7 +228,7 @@ inChol2spec <- function(inChol, init) {
     for (p in (init$Nreal + 1):P2){ 
       spec[p, k] <- Im(F_k[init$indexer[p, 3], init$indexer[p, 4]])
     }
-   
+    
   }
   
   return(spec)
@@ -273,7 +283,7 @@ psd <- function(paras, init) {
 #' @export loglike
 #'
 loglike <- function(thetas, As, lambda, init) {
-
+  
   hatG_m <- tA2G(thetas, As, init)
   l <- matrix(0, nrow = init$K, ncol = nrow(As))
   for (i in 1:nrow(As)) {
@@ -282,12 +292,13 @@ loglike <- function(thetas, As, lambda, init) {
       Cholmat_i <- matrix(0, nrow = init$P, ncol = init$P)
       for (p in 1:init$Nreal) Cholmat_i[init$indexer[p, 3], init$indexer[p, 4]] <- hatG_m[p, k, i]
       for (p in (init$Nreal + 1):init$P^2) Cholmat_i[init$indexer[p, 3], init$indexer[p, 4]] <- Cholmat_i[init$indexer[p, 3], init$indexer[p, 4]] + 1i * hatG_m[p, k, i]
+      
       # get the loglikelihood
       l[k, i] <- -log(prod(eigen(Cholmat_i %*% Conj(t(Cholmat_i)), only.values = T)$values)) + Conj(t(init$freqdom[[i]]$tildeX[, k])) %*% Cholmat_i %*% Conj(t(Cholmat_i)) %*% init$freqdom[[i]]$tildeX[, k]
     }
   }
   loglike <- Re(sum(l))
-
+  
   # Penalized loglikelihood
   if (!is.matrix(thetas)) {
     lam.pen <- rep(0, 0)
@@ -305,7 +316,7 @@ loglike <- function(thetas, As, lambda, init) {
     if (is.vector(lambda) && length(lambda) == 1) lambda <- rep(lambda, ncol(thetas))
     ploglike <- Re(loglike + sum(diag(lambda, ncol(thetas)) %*% diag(t(thetas) %*% init$D %*% thetas)))
   }
-
+  
   return(list(ploglike = ploglike, loglike = loglike))
 }
 
@@ -316,6 +327,7 @@ loglike <- function(thetas, As, lambda, init) {
 # [,1]: index of the vector (1,...,P^2); [,2]: index of real or not {0,1}; [,3]: row number(1,...,P)
 # [,4]: column number (1,...,(row number)); [,5]: index of diagonal elements {1,0}
 
+#' @export Cholindexer
 Cholindexer <- function(P) {
   Nreal <- P * (P + 1) / 2
   indexer <- matrix(0, nrow = P^2, ncol = 5)
@@ -328,7 +340,6 @@ Cholindexer <- function(P) {
   
   return(indexer)
 }
-
 
 # drivG -------------------------------------------------------------------
 
