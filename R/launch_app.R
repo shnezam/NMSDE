@@ -33,7 +33,7 @@ shiny_ui <-
                                              plotOutput("data.desc", height = 600, width = 600)),
                                     tabPanel("Basis Functions",
                                              column(8,plotOutput("basis.desc", height = 600, width = 600)), column(4,uiOutput("basis.n", width="300px"))),
-                                    tabPanel("MNCSDE",
+                                    tabPanel("NMCSDE",
                                              column(3,uiOutput("n.iter", width="200px")), column(3,uiOutput("which.spec", width="200px")), column(2,uiOutput("runit", width="200px")), column(4, fluidRow(column(6,uiOutput("diffP")), column(6,uiOutput("m"))),tags$hr(style="border-color: red;", width="200px", align="center")),
                                              column(8,plotOutput("MNCSDE.out", height = 600, width = 600)),
                                              column(4,uiOutput("results"),uiOutput("s.iter"),uiOutput("pair.dend.dens"),uiOutput("ams.MNCSDE"),uiOutput("sts.MNCSDE"),uiOutput("download.b"))),

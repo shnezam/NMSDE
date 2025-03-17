@@ -1,5 +1,5 @@
 ---
-title: "MNCSDE"
+title: "NMCSDE"
 author: "Mehdi Maadooliat"
 date: "January 28, 2017"
 output: html_document
@@ -7,7 +7,7 @@ runtime: shiny
 ---
 
 # Side Bar Panel
-Contains the inputs that will be used in different `sub-panels`. The following five inputs will be used in sub-panels **Basis Functions** (to generate the basis functions) and **MNCSDE** (to initialize, run and report the `MNCSDE` algorithm):
+Contains the inputs that will be used in different `sub-panels`. The following five inputs will be used in sub-panels **Basis Functions** (to generate the basis functions) and **NMCSDE** (to initialize, run and report the `NMCSDE` algorithm):
 
 * [Degree](https://en.wikipedia.org/wiki/Degree_of_a_polynomial) of B-spline Basis:  
 * [Deg. of freedom](https://en.wikipedia.org/wiki/Degrees_of_freedom) of B-spline Basis:  
@@ -15,7 +15,7 @@ Contains the inputs that will be used in different `sub-panels`. The following f
 * Input Data: Preiodogram
 * Log Scale "Y" : (SD-Ps)
 
-The first two inputs are mostly to describe the *basis functions* and *initialized* the *MNCSDE*. The third input is to specify the number common basis in *MNCSDE* algorithm, and number of clusters to produce the outputs. The fourth input specify the type of input (time series or periodograms).
+The first two inputs are mostly to describe the *basis functions* and *initialized* the *NMCSDE*. The third input is to specify the number common basis in *NMCSDE* algorithm, and number of clusters to produce the outputs. The fourth input specify the type of input (time series or periodograms).
 
 # Main Panel
 ## Data
@@ -33,8 +33,8 @@ The [Elbow Method](https://en.wikipedia.org/wiki/Elbow_method_(clustering\)) is 
 ## Basis Functions
 * Using some visualization techniques, we illustrate the B-spline basis that is used in the algorithm.
 
-## MNCSDE
-* The _MNCSDE_ algorithm is implemented in this sub-panel
+## NMCSDE
+* The _NMCSDE_ algorithm is implemented in this sub-panel
 * Also the results and graphs is provided here.
 
 ## Manual
