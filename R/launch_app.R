@@ -1,7 +1,7 @@
 
 shiny_ui <- 
   fluidPage(tags$head(tags$style(HTML("body { max-width: 1250px !important; }"))),
-            titlePanel("MNCSDE v0.0"),
+            titlePanel("NMCSDE v0.0"),
             sidebarLayout(
               sidebarPanel(width=3, tags$head(tags$style(type="text/css", ".well { max-width: 300px; }")),
                            sliderInput("deg", HTML("Degree of B-spline Basis:"), min = 0, max = 5, value = 3, step = 1, width="250px"),
