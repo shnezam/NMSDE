@@ -10,36 +10,6 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
-
-
-////////////////////// import some R functions ///////////////////////////
-
-// // [[Rcpp::export]]
-// arma::mat inChol2spec_c(arma::mat inchol,List init){
-//   Function sp("inChol2spec");
-//   arma::mat s=as<arma::mat>(sp(inchol,init));
-//   return s;
-// }
-//
-
-// // [[Rcpp::export]]
-//  arma::cube tA2G_c_mat(arma::mat thetas,arma::cube As,Rcpp::List init){
-//    Function g("tA2G");
-//    arma::cube s=as<arma::cube>(g(thetas,As,init));
-//    return s;
-// }
-// 
-// // [[Rcpp::export]]
-// Rcpp::List loglike_c_mat(arma::mat thetas,arma::cube As,arma::vec lambda,List init){
-//    NumericVector l=wrap(lambda);
-//    l.attr("dim")=R_NilValue;//vec into NumericVector (2dim into 1dim)
-//    Function h("loglike");
-//    return h(thetas,As,l,init);
-//  }
-// 
-
-
-
 /////////////////////////// tA2G_c_mat ////////////////////////////////
 // [[Rcpp::export]]
 arma::cube tA2G_c_mat(arma::mat thetas, arma::cube As, Rcpp::List init) {
@@ -63,63 +33,78 @@ arma::cube tA2G_c_mat(arma::mat thetas, arma::cube As, Rcpp::List init) {
 
 
 /////////////////////////// loglike_c_mat ////////////////////////////////
-//' @export
+////' @export
+// // [[Rcpp::export]]
+// Rcpp::List loglike_c_mat(arma::mat thetas, arma::cube As, arma::vec lambda, Rcpp::List init, Rcpp::List tildeX) {
+//   Rcout << "theta1 " << thetas << std::endl;
+//   //Whittle negative loglikelihood
+//   arma::uword P = init["P"];
+//   arma::uword P2 = pow(P, 2);
+//   arma::uword Nreal = P * (P + 1) / 2;
+//   arma::uword K = init["K"];
+//   arma::mat indexer = init["indexer"];
+//   //Rcpp::List freqdom = init["freqdom"];
+//   arma::mat D = init["D"];
+// 
+//   arma::cube hatG_m = tA2G_c_mat(thetas, As, init);
+//   arma::cx_mat l = cx_mat(zeros(K, As.n_rows), zeros(K, As.n_rows));
+//   for (arma::uword i = 0; i < As.n_rows; i++) {
+// 
+//     //Rcpp::List freqdom_i = freqdom[i];
+//     //arma::cx_mat tildeX_i = freqdom_i[0];
+//     arma::cx_mat tildeX_i = tildeX[i];
+//     for (arma::uword k = 0; k < K; k++) {
+//       //get the inverse cholesky matrix
+//       arma::cx_mat Cholmat_i = cx_mat(zeros(P, P), zeros(P, P));
+//       for (arma::uword p = 0; p < Nreal; p++) {
+//         Cholmat_i(indexer(p, 2) - 1, indexer(p, 3) - 1) = cx_double(hatG_m(p, k, i), 0);
+//       }
+//       for (arma::uword p = Nreal; p < P2; p++) {
+//         Cholmat_i(indexer(p, 2) - 1, indexer(p, 3) - 1) = Cholmat_i(indexer(p, 2) - 1, indexer(p, 3) - 1) + cx_double(0, hatG_m(p, k, i));
+//       }
+//       
+//       //get the loglikelihood
+//       arma::cx_mat tildeX_k_i = tildeX_i(span::all, span(k));
+//       //l(k, i) = -log_det_sympd(Cholmat_i * Cholmat_i.t()) + det(tildeX_k_i.t() * Cholmat_i * Cholmat_i.t() * tildeX_k_i);
+//       l(k,i) = -log(prod(arma::eig_sym(Cholmat_i*Cholmat_i.t())))+det(tildeX_k_i.t()*Cholmat_i*Cholmat_i.t()*tildeX_k_i);
+//     }
+//   }
+//   double loglike = accu(arma::real(l));
+//   //Rcout << "loglike " << loglike << std::endl;
+//   //Penalized loglikelihood
+// 
+//   if (lambda.n_elem == 1) {
+//     arma::vec lambda = repelem(lambda, thetas.n_cols,1);
+//   }
+//   //Rcout << "lampen " << lambda << std::endl;
+//   //Rcout << "diag " << diagmat(lambda)  << std::endl;
+//   double lam_pen = sum(diagmat(lambda) * diagvec(thetas.t() * D * thetas));//lambda:scalar
+//   
+//   double ploglike = loglike +lam_pen;
+// 
+//   Rcpp::List L = List::create(Named("ploglike") = ploglike, Named("loglike") = loglike);
+//   return L;
+// }
+////////////////////////////////
+
 // [[Rcpp::export]]
-Rcpp::List loglike_c_mat(arma::mat thetas, arma::cube As, arma::vec lambda, Rcpp::List init) {
-
-  //Whittle negative loglikelihood
-  arma::uword P = init["P"];
-  arma::uword P2 = pow(P, 2);
-  arma::uword Nreal = P * (P + 1) / 2;
-  arma::uword K = init["K"];
-  arma::mat indexer = init["indexer"];
-  Rcpp::List freqdom = init["freqdom"];
-  arma::mat D = init["D"];
-
-  arma::cube hatG_m = tA2G_c_mat(thetas, As, init);
-  arma::cx_mat l = cx_mat(zeros(K, As.n_rows), zeros(K, As.n_rows));
-  for (arma::uword i = 0; i < As.n_rows; i++) {
-
-    Rcpp::List freqdom_i = freqdom[i];
-    arma::cx_mat tildeX_i = freqdom_i[0];
-    for (arma::uword k = 0; k < K; k++) {
-      //get the inverse cholesky matrix
-      arma::cx_mat Cholmat_i = cx_mat(zeros(P, P), zeros(P, P));
-      for (arma::uword p = 0; p < Nreal; p++) {
-        Cholmat_i(indexer(p, 2) - 1, indexer(p, 3) - 1) = cx_double(hatG_m(p, k, i), 0);
-      }
-      for (arma::uword p = Nreal; p < P2; p++) {
-        Cholmat_i(indexer(p, 2) - 1, indexer(p, 3) - 1) = Cholmat_i(indexer(p, 2) - 1, indexer(p, 3) - 1) + cx_double(0, hatG_m(p, k, i));
-      }
-
-      //get the loglikelihood
-      arma::cx_mat tildeX_k_i = tildeX_i(span::all, span(k));
-      l(k, i) = -log_det_sympd(Cholmat_i * Cholmat_i.t()) + det(tildeX_k_i.t() * Cholmat_i * Cholmat_i.t() * tildeX_k_i);
-    }
-  }
-  double loglike = accu(arma::real(l));
-
-  //Penalized loglikelihood
-
-  if (lambda.n_elem == 1) {
-    arma::vec lambda = repelem(lambda, thetas.n_cols,1);
-  }
-  double lam_pen = sum(diagmat(lambda) * diagvec(thetas.t() * D * thetas));//lambda:scalar
-  double ploglike = loglike +lam_pen;
-
-  Rcpp::List L = List::create(Named("ploglike") = ploglike, Named("loglike") = loglike);
-  return L;
+Rcpp::List loglike_c_mat(arma::mat thetas,arma::cube As,arma::vec lambda,List init, Rcpp::List tildeX){
+  NumericVector l=wrap(lambda);
+  l.attr("dim")=R_NilValue;//vec into NumericVector (2dim into 1dim)
+  Function h("loglike");
+  return h(thetas,As,l,init,tildeX);
 }
 
 
 /////////////////////////// Workingfish_mat ////////////////////////////////
 // [[Rcpp::export]]
-Rcpp::List Workingfish_mat(arma::mat thetas,arma::cube As,arma::vec lambda,Rcpp::List init) { 
+Rcpp::List Workingfish_mat(arma::mat thetas,arma::cube As,arma::vec lambda,Rcpp::List init, Rcpp::List tildeX) { 
   arma::uword P=init["P"]; arma::uword K=init["K"]; arma::uword Nreal=init["Nreal"];
   arma::vec omegas=init["omegas"]; arma::vec knots=init["knots"];
   arma::mat B=init["B"]; arma::mat D=init["D"]; arma::mat indexer=init["indexer"];
   arma::cube thetastA=init["theta.tA"];
-  Rcpp::List drivG=init["drivG"]; Rcpp::List freqdom=init["freqdom"];
+  Rcpp::List drivG=init["drivG"]; 
+  //Rcpp::List freqdom=init["freqdom"];
   arma::uword nbasis=B.n_cols;
   arma::uword norder=nbasis-knots.n_elem+2;
   arma::uword P2=pow(P,2);
@@ -168,8 +153,9 @@ Rcpp::List Workingfish_mat(arma::mat thetas,arma::cube As,arma::vec lambda,Rcpp:
     cube blankc2=zeros(P2,P2,K);
     temp9_i.fill(blankc2);
     for(uword k=0; k<K; k++){
-      Rcpp::List freqdom_i=freqdom[i];
-      cx_mat tildeX_i=freqdom_i[0];
+      //Rcpp::List freqdom_i=freqdom[i];
+      arma::cx_mat tildeX_i=tildeX[i];
+      //cx_mat tildeX_i=freqdom_i[0];
       cx_mat tildeX_k_i=tildeX_i(span::all,span(k));
       cx_mat CjtildeX_k_i=tildeX_k_i.t();
       for(uword p=0; p<Nreal; p++){
@@ -274,8 +260,8 @@ Rcpp::List Workingfish_mat(arma::mat thetas,arma::cube As,arma::vec lambda,Rcpp:
     for(uword r=0; r<R; r++){
       curr_thetas.col(r)=thetas.col(r)-tau*theta_chng.col(r);//curr_thetas(span::all,span(r),span::all)=reshape(curr_thetas_vec,nbasis,P2);
     }
-    double ploglike_curr=loglike_c_mat(curr_thetas,curr_As,lambda,init)["ploglike"];
-    double ploglike_old=loglike_c_mat(thetas,As,lambda,init)["ploglike"];
+    double ploglike_curr=loglike_c_mat(curr_thetas,curr_As,lambda,init,tildeX)["ploglike"];
+    double ploglike_old=loglike_c_mat(thetas,As,lambda,init,tildeX)["ploglike"];
     if(ploglike_curr<=ploglike_old){
       repit=false;
     }

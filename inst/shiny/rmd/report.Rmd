@@ -1,0 +1,41 @@
+---
+title: "MNCSDE"
+author: "Mehdi Maadooliat"
+date: "January 28, 2017"
+output: html_document
+runtime: shiny
+---
+
+# Side Bar Panel
+Contains the inputs that will be used in different `sub-panels`. The following five inputs will be used in sub-panels **Basis Functions** (to generate the basis functions) and **MNCSDE** (to initialize, run and report the `MNCSDE` algorithm):
+
+* [Degree](https://en.wikipedia.org/wiki/Degree_of_a_polynomial) of B-spline Basis:  
+* [Deg. of freedom](https://en.wikipedia.org/wiki/Degrees_of_freedom) of B-spline Basis:  
+* \# of Common bivatiate Basis (\# of Clusters for Clustering):
+* Input Data: Preiodogram
+* Log Scale "Y" : (SD-Ps)
+
+The first two inputs are mostly to describe the *basis functions* and *initialized* the *MNCSDE*. The third input is to specify the number common basis in *MNCSDE* algorithm, and number of clusters to produce the outputs. The fourth input specify the type of input (time series or periodograms).
+
+# Main Panel
+## Data
+One can either use the files posted in Server
+
+* TS-m=xx-n=yyy
+
+or upload a different file to be analyzed.
+
+## Data Description
+The [Elbow Method](https://en.wikipedia.org/wiki/Elbow_method_(clustering\)) is the first output of *Data Description* panel. It can be used as a visualizing tool to obtain the required number of `common basis` based on the initial estimate (obtained by [mapping](https://en.wikipedia.org/wiki/Transformation_matrix) the log-[peridogram](https://en.wikipedia.org/wiki/Periodogram) to the [column space](https://en.wikipedia.org/wiki/Row_and_column_spaces#Column_space) of the [basis expansion](https://en.wikipedia.org/wiki/Basis_function)).  
+
+* The remaining _Data Description_ choices are used to summarize and visualize the input data:
+
+## Basis Functions
+* Using some visualization techniques, we illustrate the B-spline basis that is used in the algorithm.
+
+## MNCSDE
+* The _MNCSDE_ algorithm is implemented in this sub-panel
+* Also the results and graphs is provided here.
+
+## Manual
+The sub-panel that contains this _instruction manual_.

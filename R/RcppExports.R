@@ -14,24 +14,23 @@ tA2G_c_cube <- function(thetas, As, init) {
 }
 
 #' @export
-loglike_c_cube <- function(thetas, As, lambda, init) {
-    .Call(`_NMSDE_loglike_c_cube`, thetas, As, lambda, init)
+loglike_c_cube <- function(thetas, As, lambda, init, tildeX) {
+    .Call(`_NMSDE_loglike_c_cube`, thetas, As, lambda, init, tildeX)
 }
 
-Workingfish_cube <- function(thetas, As, lambda, init) {
-    .Call(`_NMSDE_Workingfish_cube`, thetas, As, lambda, init)
+Workingfish_cube <- function(thetas, As, lambda, init, tildeX) {
+    .Call(`_NMSDE_Workingfish_cube`, thetas, As, lambda, init, tildeX)
 }
 
 tA2G_c_mat <- function(thetas, As, init) {
     .Call(`_NMSDE_tA2G_c_mat`, thetas, As, init)
 }
 
-#' @export
-loglike_c_mat <- function(thetas, As, lambda, init) {
-    .Call(`_NMSDE_loglike_c_mat`, thetas, As, lambda, init)
+loglike_c_mat <- function(thetas, As, lambda, init, tildeX) {
+    .Call(`_NMSDE_loglike_c_mat`, thetas, As, lambda, init, tildeX)
 }
 
-Workingfish_mat <- function(thetas, As, lambda, init) {
-    .Call(`_NMSDE_Workingfish_mat`, thetas, As, lambda, init)
+Workingfish_mat <- function(thetas, As, lambda, init, tildeX) {
+    .Call(`_NMSDE_Workingfish_mat`, thetas, As, lambda, init, tildeX)
 }
 
