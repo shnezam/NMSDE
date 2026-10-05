@@ -13,6 +13,30 @@ tA2G_c_cube <- function(thetas, As, init) {
     .Call(`_NMSDE_tA2G_c_cube`, thetas, As, init)
 }
 
+#' Penalized Whittle negative log-likelihood (C++ implementation)
+#'
+#' Fast 'RcppArmadillo' version of \code{\link{loglike}} for the
+#' \emph{different bases} model, where each Cholesky component has its own
+#' basis coefficients (\code{thetas} is an \eqn{L \times R \times P^2}{L x R x P^2}
+#' array).
+#'
+#' @param thetas Numeric array of dimension \eqn{L \times R \times P^2}{L x R x P^2}
+#'   with the basis coefficients \eqn{\Theta_j}, \eqn{j = 1, \dots, P^2}.
+#' @param As Numeric array of dimension \eqn{M \times R \times P^2}{M x R x P^2}
+#'   with the scores \eqn{A_j}.
+#' @param lambda Numeric smoothing parameter: a scalar, or a vector of length
+#'   \eqn{P^2} with one value per Cholesky component.
+#' @param init List returned by \code{\link{initial}}.
+#' @param tildeX List of \eqn{M} complex matrices (\eqn{P \times K}{P x K}) of
+#'   discrete Fourier transforms, usually \code{init$tildeX}.
+#'
+#' @return A list with components \code{ploglike} (penalized negative
+#'   log-likelihood) and \code{loglike} (Whittle negative log-likelihood).
+#' @seealso \code{\link{loglike}}, \code{\link{iterate}}
+#' @examples
+#' X <- dat$X1
+#' init <- initial(X, nbasis = 10, R = 2)
+#' loglike_c_cube(init$thetas, init$As, lambda = 1, init, init$tildeX)
 #' @export
 loglike_c_cube <- function(thetas, As, lambda, init, tildeX) {
     .Call(`_NMSDE_loglike_c_cube`, thetas, As, lambda, init, tildeX)

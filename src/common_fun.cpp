@@ -6,7 +6,6 @@
 
 using namespace Rcpp;
 using namespace arma;
-using namespace std;
 
 // in a cube, permute {1,3,2} (permute slices by columns) OR permute {2,3,1}
 

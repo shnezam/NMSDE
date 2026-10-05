@@ -18,11 +18,28 @@ export(tA2G)
 export(time2freq)
 import(shiny)
 importFrom(Rcpp,sourceCpp)
-importFrom(dse,ARMA)
-importFrom(dse,simulate)
-importFrom(graphics,lines)
-importFrom(graphics,par)
-importFrom(graphics,plot)
-importFrom(graphics,title)
-importFrom(stats,fft)
+importFrom(graphics,
+  axis,
+  lines,
+  pairs,
+  par,
+  plot,
+  points,
+  title
+)
+importFrom(stats,
+  as.dendrogram,
+  cmdscale,
+  cutree,
+  dist,
+  fft,
+  hclust,
+  plot.ts,
+  rnorm,
+  ts.plot
+)
+importFrom(utils,
+  data,
+  head
+)
 useDynLib(NMSDE, .registration = TRUE)

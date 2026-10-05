@@ -1,5 +1,5 @@
 
-shiny_ui <- 
+shiny_ui <- function()
   fluidPage(tags$head(tags$style(HTML("body { max-width: 1250px !important; }"))),
             titlePanel("NMCSDE v0.001"),
             sidebarLayout(
@@ -37,32 +37,25 @@ shiny_ui <-
                                              column(3,uiOutput("n.iter", width="200px")), column(3,uiOutput("which.spec", width="200px")), column(2,uiOutput("runit", width="200px")), column(4, fluidRow(column(6,uiOutput("diffP")), column(6,uiOutput("m"))),tags$hr(style="border-color: red;", width="200px", align="center")),
                                              column(8,plotOutput("MNCSDE.out", height = 600, width = 600)),
                                              column(4,uiOutput("results"),uiOutput("s.iter"),uiOutput("pair.dend.dens"),uiOutput("ams.MNCSDE"),uiOutput("sts.MNCSDE"),uiOutput("download.b"))),
-                                    tabPanel("Manual", includeMarkdown(system.file("shiny/rmd", "report.Rmd", package = "NMSDE")))))
+                                    tabPanel("Manual", if (requireNamespace("markdown", quietly = TRUE)) includeMarkdown(system.file("shiny/rmd", "report.Rmd", package = "NMSDE")) else p("Install the 'markdown' package to display the manual."))))
             )
   )
 
 shiny_server <- function(input, output, session) {
   
-  data("servshiny"); desc.choice <- list("Elbow Method"="elbow", Data=c("Time Series" = "ts"));
+  dat <- datPar <- NULL; data("servshiny", package = "NMSDE", envir = environment()); desc.choice <- list("Elbow Method"="elbow", Data=c("Time Series" = "ts"));
   options(shiny.maxRequestSize=100*1024^2); iX <- reactiveVal(list()); imodelPar <- reactiveVal(NULL); Ts <- reactiveVal(NULL); track.data <- reactiveVal(list());
   output$flag_sim <- reactive("sim"%in%input$f.choice); outputOptions(output, "flag_sim", suspendWhenHidden = FALSE)
   
   simul <- function() {
-    library(dse)
-    sigma<-matrix(c(1,input$rho,input$rho,1), 2, 2); set.seed(5)
+    sigma<-matrix(c(1,input$rho,input$rho,1), 2, 2)
     Phi1<-list(diag(2), -diag(c(0.5,-0.3)), -diag(c(0,-0.5)))
     Phi2<-list(diag(2), -matrix(c(0,-0.6,0.5,-0.2), 2, 2))
     Phi3<-list(diag(2), -matrix(c(0.7,0.2,0.7,0.2), 2, 2))
-    Phis<-list(Phi1, Phi2, Phi3); ARcoeffs <- models <- X <- list()
-    for (k in 1:length(Phis)) {
-      ARcoeffs[[k]] <- array(0,dim=c((length(Phis[[k]])), 2, 2))
-      for(i in 1:2) for(j in 1:(length(Phis[[k]]))) {ARcoeffs[[k]][j,,i]<-Phis[[k]][[j]][,i]}
-      models[[k]] <- ARMA(A=ARcoeffs[[k]], B=diag(2), TREND=rep(0,2))
-    }
+    Phis<-list(Phi1, Phi2, Phi3); X <- list()
     idx <- as.numeric(sample(rep(input$model,input$rep)))
     for (i in 1:length(idx)) {
-      varsim <- simulate(models[[idx[i]]], sampleT=input$t.len, Cov=sigma)
-      X[[i]] <- matrix(varsim$output, nr=2, nc=input$t.len, byrow=T)
+      X[[i]] <- sim_var(Phis[[idx[i]]], sigma, input$t.len)
     }
     return(list(X=X, modelPar=list(paras=Phis, sigma=sigma, rnd=idx)))
   }
@@ -105,7 +98,7 @@ shiny_server <- function(input, output, session) {
     if (input$f.choice=="server" && is.null(input$s.choice)) return()
     if (input$f.choice=="upload" && is.null(input$file)) return("<b>Select a '.Rda' file that contain the multivariate time series as a list in rows</b>")
     if (input$f.choice=="upload") {
-      load(input$file$datapath);  iX(X); imodelPar(NULL)
+      X <- NULL; load(input$file$datapath);  iX(X); imodelPar(NULL)
     } else if (input$f.choice=="sim") {
       sim <- simul(); iX(sim$X); imodelPar(sim$modelPar)
     } else {
@@ -184,7 +177,10 @@ shiny_server <- function(input, output, session) {
             axis(1,summary(1:nrow(resp))[-4],summary(init$freq)[-4])#c(0,.125,.25,.375,.5))
           }
         } else {
-          if (input$desc == "elbow") plot(init$elbow, size=5, cex=4)
+          if (input$desc == "elbow") {
+            plot(init$elbow, type="b", pch=20, xlab="Number of clusters", ylab="Total within-cluster sum of squares", main=paste("Elbow Method -",fname))
+            points(input$dimn, init$elbow[input$dimn], col=2, cex=2)
+          }
           else{
             percentage <- paste0("\n The variation explained in first ",input$dimn," adaptive basis of the initial est. is ", sum(init$scree[1:input$dimn]),"%")
             plot(init$scree, xlab="Component", ylab="Percentage", main=paste("Scree Plot -",fname,percentage), pch=20, frame.plot=F, ylim=c(0,100), cex.main=.75)
@@ -243,7 +239,7 @@ shiny_server <- function(input, output, session) {
   output$s.iter <- renderUI({
     if ((input$f.choice=="upload" && is.null(input$file)) || is.null(input$results)) return(); if (!input$runit) return()
     if (input$results%in%c("Separate(MNSDE)","tSVD.MNSDE")) return();
-    if (!exists("res")) res <- list(ans=list(r.iter=input$n.iter))
+    if (is.null(res)) res <- list(ans=list(r.iter=input$n.iter))
     return(sliderInput("s.iter", "MNCSDE Iteration #:", min = 1, max = res$ans$r.iter, value = res$ans$r.iter-1, step = 1, width="200px"))
   })
   
@@ -259,7 +255,7 @@ shiny_server <- function(input, output, session) {
       lam <- 2^input$init.lam-2^(-55)
       init <- initial(X=iX(), nbasis=input$df, norder=input$deg+1, R=input$dimn, pen=ifelse(input$diffP,"diff","deriv"), a=ifelse(input$diffP,input$m,2), theta_P2=!input$cbs, tru=imodelPar(), f.r=input$freq)
       if (input$cbs && input$lambda=="mult") lam <- rep(lam,input$dimn)
-      else if (!input$cbs && input$lambda=="mult") lam <- rep(lam,nrow(iX()[[1]])^2) #matrix(rep(lam,input$dimn*nrow(iX()[[1]])^2),nr=input$dimn)
+      else if (!input$cbs && input$lambda=="mult") lam <- rep(lam,nrow(iX()[[1]])^2) #matrix(rep(lam,input$dimn*nrow(iX()[[1]])^2),nrow = input$dimn)
       # else if (!input$cbs && input$lambda=="sing") lam <- rep(lam,nrow(iX()[[1]])^2)
       ans <- ansi <- anst <- list();
       if ("mncsde" %in% input$model.est) {
@@ -290,7 +286,7 @@ shiny_server <- function(input, output, session) {
         }
         ansi$dens <- aperm(array(apply(ansi.stA,3,inChol2spec,init=init) ,dim=c(init$P^2,init$K,init$m)),c(2,3,1))
         if (input$cbs) {
-          merg.theta.tA <- matrix(ansi.Theta.tA,nr=input$df)
+          merg.theta.tA <- matrix(ansi.Theta.tA,nrow = input$df)
           svd.merg.theta.tA<-svd(merg.theta.tA)
           thetas<-as.matrix(svd.merg.theta.tA$u[,1:input$dimn])
           mergA<-as.matrix(svd.merg.theta.tA$v%*%diag(svd.merg.theta.tA$d,ncol(svd.merg.theta.tA$v))[,1:input$dimn])
@@ -328,10 +324,10 @@ shiny_server <- function(input, output, session) {
     downloadButton('saveit', paste0('Download results (',fname,')'));
   })
   
-  output$saveit <- downloadHandler('saveit', filename = function() {paste0(ifelse(input$f.choice!="upload",input$s.choice,input$file$name),".RData")}, content = function(file) {
-    init = res$init; ans = res$ans; ansi = res$ansi;
-    clust <- clusters <- NULL; clust$A <- hclust(dist(scale(ans$A[[input$s.iter]])), method="ward.D");
-    clust$dens <- hclust(dist(t(init$B%*%ans$Theta[[input$s.iter]]%*%t(ans$A[[input$s.iter]]))), method="ward.D");
+  output$saveit <- downloadHandler(filename = function() {paste0(ifelse(input$f.choice!="upload",input$s.choice,input$file$name),".RData")}, content = function(file) {
+    init = res$init; ans = res$ans; ansi = res$ansi; As <- ans$As[[input$s.iter]];
+    clust <- clusters <- NULL; clust$A <- hclust(dist(scale(matrix(As, nrow=dim(As)[1]))), method="ward.D");
+    clust$dens <- hclust(dist(t(apply(tA2G(ans$thetas[[input$s.iter]],As,init),3,inChol2spec,init=init))), method="ward.D");
     clusters$A <- cutree(clust$A,k=input$dimn); clusters$dens <- cutree(clust$dens,k=input$dimn);
     save(init, ans, ansi, clust, clusters, file=file)
   })
@@ -363,7 +359,9 @@ shiny_server <- function(input, output, session) {
         if (ncol(A)==1) {plot(A, col=clcol, main=paste("Score Plot -",j,"-", fname), pch=20, xaxt="n", ylab="Score", xlab=""); axis(1,1:nrow(A),clust$labels,las=2)}
         else {pairs(A, col=clcol, main=paste("Matrix Plot -",j,"-", fname), cex.lab=2, label=paste("Score",1:ncol(A)))}
       } else if (input$pair.dend.dens=="Dendrogram") {
-        plot(color_labels(as.dendrogram(clust), k = input$dimn, col=unique(clcol)), main=paste("Dendrogram -",j,"-",fname), cex.axis=0.75)
+        dend <- as.dendrogram(clust)
+        if (requireNamespace("dendextend", quietly = TRUE)) dend <- dendextend::color_labels(dend, k = input$dimn, col=unique(clcol))
+        plot(dend, main=paste("Dendrogram -",j,"-",fname), cex.axis=0.75)
       } else {
         if (is.null(input$ams.MNCSDE)) return(); indx <- as.numeric(input$sts.MNCSDE);
         if (input$ams.MNCSDE=="multiple") {
@@ -398,18 +396,48 @@ shiny_server <- function(input, output, session) {
 
 
 
-#' laucnh a shiny app
+# Simulate a zero-mean VAR(d) series of length n. Phi is the list of
+# lag-polynomial matrices I, -Phi_1, ..., -Phi_d (as in psd()); returns a P x n matrix.
+sim_var <- function(Phi, sigma, n, burnin = 100) {
+  P <- nrow(sigma)
+  e <- t(chol(sigma)) %*% matrix(rnorm(P * (n + burnin)), nrow = P)
+  x <- matrix(0, nrow = P, ncol = n + burnin)
+  for (t in seq_len(n + burnin)) {
+    x[, t] <- e[, t]
+    for (s in seq_len(min(length(Phi) - 1, t - 1))) x[, t] <- x[, t] - Phi[[s + 1]] %*% x[, t - s]
+  }
+  x[, -seq_len(burnin), drop = FALSE]
+}
+
+#' Launch the NMCSDE 'shiny' application
 #'
-#' @param ... Any possible variables
+#' Starts an interactive application that applies the collective spectral
+#' density estimation to example, simulated or uploaded data. The application
+#' shows the time series, the elbow plot used to choose the number of common
+#' basis functions \eqn{R}, the B-spline basis, and the NMCSDE estimates
+#' (collective, separate NMSDE, and truncated-SVD separate estimates). It also
+#' clusters the series by their scores or estimated spectra, and the results
+#' can be downloaded as an \file{.RData} file. Uploaded files must be
+#' \file{.Rda} files containing a list \code{X} of \eqn{P \times T}{P x T}
+#' matrices, as described in \code{\link{initial}}.
 #'
-#' @return open a shiny app
+#' @param ... Currently unused.
+#'
+#' @return A \code{shiny.appobj} object. Printing it (as happens at the
+#'   console) runs the application.
+#' @seealso \code{\link{initial}}, \code{\link{iterate}}
+#' @examples
+#' if (interactive()) {
+#'   launch_app()
+#' }
 #' @export
 launch_app <- function(...) {
   shiny_env <- new.env()
+  shiny_env$res <- NULL
   environment(shiny_ui) <- shiny_env
   environment(shiny_server) <- shiny_env
   shiny::shinyApp(
-    ui = shiny_ui,
+    ui = shiny_ui(),
     server = shiny_server
   )
 }

@@ -8,7 +8,6 @@
 
 using namespace Rcpp;
 using namespace arma;
-using namespace std;
 
 /////////////////////////// tA2G_c_mat ////////////////////////////////
 // [[Rcpp::export]]
@@ -91,7 +90,7 @@ arma::cube tA2G_c_mat(arma::mat thetas, arma::cube As, Rcpp::List init) {
 Rcpp::List loglike_c_mat(arma::mat thetas,arma::cube As,arma::vec lambda,List init, Rcpp::List tildeX){
   NumericVector l=wrap(lambda);
   l.attr("dim")=R_NilValue;//vec into NumericVector (2dim into 1dim)
-  Function h("loglike");
+  Function h("loglike", Environment::namespace_env("NMSDE"));
   return h(thetas,As,l,init,tildeX);
 }
 
@@ -180,7 +179,7 @@ Rcpp::List Workingfish_mat(arma::mat thetas,arma::cube As,arma::vec lambda,Rcpp:
       for(uword j1=0;j1<P2;j1++){
         cx_mat dG_j=dG[j1];
         //numeric_limits<double>::epsilon()
-        if(abs(hatG_m(j1,k,i))<pow(10,-153)){
+        if(std::abs(hatG_m(j1,k,i))<pow(10,-153)){
           hatG_m(j1,k,i)=pow(10,-153);
         }
         temp1_i(j1,k)=as_scalar(real(CjtildeX_k_i*(dG_j*G_i.t()+ G_i*dG_j.t())*tildeX_k_i))+indexer(j1,4)*((-2)/hatG_m(j1,k,i));
@@ -251,7 +250,7 @@ Rcpp::List Workingfish_mat(arma::mat thetas,arma::cube As,arma::vec lambda,Rcpp:
   //step-halving algorithm
   bool repit=true;
   double counter=0;
-  while(repit){
+  while(repit && counter<30){ // cap the number of step halvings
     double tau=pow(0.5,counter);
     for(uword i=0; i<As.n_rows; i++){
       vec curr_As_vec=A_RP2_m.col(i)-tau*A_chng.col(i);

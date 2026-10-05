@@ -8,7 +8,6 @@
 
 using namespace Rcpp;
 using namespace arma;
-using namespace std;
 
 /////////////////////////// tA2G_c_cube ////////////////////////////////
 
@@ -34,7 +33,31 @@ arma::cube tA2G_c_cube(arma::cube thetas,arma::cube As,List init){
 
 
 /////////////////////////// loglike_c_cube ////////////////////////////////
-// 
+//
+//' Penalized Whittle negative log-likelihood (C++ implementation)
+//'
+//' Fast 'RcppArmadillo' version of \code{\link{loglike}} for the
+//' \emph{different bases} model, where each Cholesky component has its own
+//' basis coefficients (\code{thetas} is an \eqn{L \times R \times P^2}{L x R x P^2}
+//' array).
+//'
+//' @param thetas Numeric array of dimension \eqn{L \times R \times P^2}{L x R x P^2}
+//'   with the basis coefficients \eqn{\Theta_j}, \eqn{j = 1, \dots, P^2}.
+//' @param As Numeric array of dimension \eqn{M \times R \times P^2}{M x R x P^2}
+//'   with the scores \eqn{A_j}.
+//' @param lambda Numeric smoothing parameter: a scalar, or a vector of length
+//'   \eqn{P^2} with one value per Cholesky component.
+//' @param init List returned by \code{\link{initial}}.
+//' @param tildeX List of \eqn{M} complex matrices (\eqn{P \times K}{P x K}) of
+//'   discrete Fourier transforms, usually \code{init$tildeX}.
+//'
+//' @return A list with components \code{ploglike} (penalized negative
+//'   log-likelihood) and \code{loglike} (Whittle negative log-likelihood).
+//' @seealso \code{\link{loglike}}, \code{\link{iterate}}
+//' @examples
+//' X <- dat$X1
+//' init <- initial(X, nbasis = 10, R = 2)
+//' loglike_c_cube(init$thetas, init$As, lambda = 1, init, init$tildeX)
 //' @export
 // [[Rcpp::export]]
 Rcpp::List loglike_c_cube(arma::cube thetas,arma::cube As,arma::vec lambda, Rcpp::List init, Rcpp::List tildeX){
@@ -185,7 +208,7 @@ Rcpp::List Workingfish_cube(arma::cube thetas,arma::cube As,arma::vec lambda,Rcp
       //calculate temp-s
       for(arma::uword j1=0;j1<P2;j1++){
         arma::cx_mat dG_j=dG[j1];
-        if(abs(hatG_m(j1,k,i))<pow(10,-153)){
+        if(std::abs(hatG_m(j1,k,i))<pow(10,-153)){
           hatG_m(j1,k,i)=pow(10,-153);
         }
         temp1_i(j1,k)=as_scalar(real(CjtildeX_k_i*(dG_j*G_i.t()+ G_i*dG_j.t())*tildeX_k_i))+indexer(j1,4)*((-2)/hatG_m(j1,k,i));
@@ -269,7 +292,7 @@ Rcpp::List Workingfish_cube(arma::cube thetas,arma::cube As,arma::vec lambda,Rcp
   //step-halving algorithm
   bool repit=true;
   double counter=0;
-  while(repit){
+  while(repit && counter<30){ // cap the number of step halvings
     double tau=pow(0.5,counter);
     for(arma::uword i=0; i<As.n_rows; i++){
       arma::vec curr_As_vec=A_RP2_m.col(i)-tau*A_chng.col(i);
@@ -283,7 +306,6 @@ Rcpp::List Workingfish_cube(arma::cube thetas,arma::cube As,arma::vec lambda,Rcp
     double ploglike_old=loglike_c_cube(thetas,As,lambda,init,tildeX)["ploglike"];
     if(ploglike_curr<=ploglike_old){
       repit=false;
-      Rcout << "counter: " << counter << " old: " << ploglike_old << " curr: " << ploglike_curr<< "\n";
     }
     else{
       counter+=1;

@@ -2,16 +2,33 @@
 % Please edit documentation in R/launch_app.R
 \name{launch_app}
 \alias{launch_app}
-\title{laucnh a shiny app}
+\title{Launch the NMCSDE 'shiny' application}
 \usage{
 launch_app(...)
 }
 \arguments{
-\item{...}{Any possible variables}
+\item{...}{Currently unused.}
 }
 \value{
-open a shiny app
+A \code{shiny.appobj} object. Printing it (as happens at the
+  console) runs the application.
 }
 \description{
-laucnh a shiny app
+Starts an interactive application that applies the collective spectral
+density estimation to example, simulated or uploaded data. The application
+shows the time series, the elbow plot used to choose the number of common
+basis functions \eqn{R}, the B-spline basis, and the NMCSDE estimates
+(collective, separate NMSDE, and truncated-SVD separate estimates). It also
+clusters the series by their scores or estimated spectra, and the results
+can be downloaded as an \file{.RData} file. Uploaded files must be
+\file{.Rda} files containing a list \code{X} of \eqn{P \times T}{P x T}
+matrices, as described in \code{\link{initial}}.
+}
+\examples{
+if (interactive()) {
+  launch_app()
+}
+}
+\seealso{
+\code{\link{initial}}, \code{\link{iterate}}
 }

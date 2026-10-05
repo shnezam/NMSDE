@@ -1,20 +1,204 @@
 ---
-title: "NMSDE"
-author: "Shirin"
-output: rmarkdown::html_vignette
+title: "Collective spectral density estimation with NMSDE"
+output: markdown::html_format
 vignette: >
-  %\VignetteIndexEntry{NMSDE}
-  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteIndexEntry{Collective spectral density estimation with NMSDE}
+  %\VignetteEngine{knitr::knitr}
   %\VignetteEncoding{UTF-8}
 ---
-This is a test.
+
 ```{r, include = FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
-)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7, fig.height = 4.5)
 ```
 
-```{r setup}
+The **NMSDE** package estimates the spectral density matrices of a collection
+of $M$ stationary $P$-variate time series. It implements NMCSDE
+(nonparametric multivariate collective spectral density estimation) and, as
+a special case, the noncollective NMSDE estimator of Nezampour et al. (2024).
+
+## The model in brief
+
+For series $i$, the inverse spectral matrix is factored as
+$f_i^{-1}(\omega) = G_i(\omega) G_i^*(\omega)$, where $G_i$ is a complex
+lower-triangular Cholesky factor. Its $P^2$ real and imaginary components,
+evaluated at the Fourier frequencies $\omega_k = k/T$, are collected in
+$K \times M$ matrices $\Gamma_j$ and modelled as
+
+$$\Gamma_j = B\,\Theta_j A_j^\top, \qquad j = 1, \dots, P^2,$$
+
+where $B$ is a rich B-spline basis with $L$ functions, $\Theta_j$
+($L \times R$) defines $R \ll L$ basis functions that are learned from the
+data, and $A_j$ ($M \times R$) holds the scores of the $M$ series. The
+*different bases* model has one $\Theta_j$ per component. The *common bases*
+model uses a single $\Theta$ for all components.
+
+The parameters minimize a penalized Whittle negative log-likelihood. The
+minimization uses Newton-Raphson iterations with step halving, and the
+smoothing parameter $\lambda$ can be updated within the iterations. Because
+every estimate is rebuilt from a Cholesky factor, it is Hermitian and
+positive definite.
+
+## Data
+
+`dat` contains collections of simulated bivariate series. Each series comes
+from one of three VAR models, and the true models are in `datPar`. Each
+collection is a list of $P \times T$ matrices, which is the input format of
+`initial()`.
+
+```{r}
 library(NMSDE)
+X <- dat$X2
+length(X)        # M series
+dim(X[[1]])      # P x T
+table(datPar$modelPar2$rnd)   # generating model of each series
 ```
+
+## Choosing the rank R
+
+`initial()` computes the periodograms, the Nadaraya-Watson starting estimate
+and the starting values of $(\Theta, A)$. Its `elbow` component helps to
+choose $R$: it holds the within-cluster sum of squares of a hierarchical
+clustering of the starting estimates.
+
+```{r elbow, fig.height = 3.5}
+init0 <- initial(X, nbasis = 10, R = 2)
+plot(init0$elbow, type = "b", pch = 20, xlab = "Number of clusters",
+     ylab = "Within-cluster sum of squares", main = "Elbow method")
+```
+
+The elbow at three clusters suggests $R = 3$.
+
+## Fitting NMCSDE
+
+We fit both variants. Supplying `tru` stores the true spectra so that we can
+compare against them. With `update.lam = TRUE` (the default), $\lambda$ is
+updated at every iteration and no grid search is needed.
+
+```{r fit}
+tru <- datPar$modelPar2
+initD <- initial(X, nbasis = 10, R = 3, theta_P2 = TRUE,  tru = tru)  # different bases
+initC <- initial(X, nbasis = 10, R = 3, theta_P2 = FALSE, tru = tru)  # common bases
+
+fitD <- iterate(initD, lambda = 1, n.iter = 30, verbose = FALSE)
+fitC <- iterate(initC, lambda = 1, n.iter = 30, verbose = FALSE)
+c(different = fitD$r.iter, common = fitC$r.iter)   # parameter sets stored
+```
+
+`tA2G()` rebuilds the Cholesky components from the final parameters, and
+`inChol2spec()` turns them into spectral matrices. Each spectral matrix is
+stored as a vector of length $P^2$: the real parts of the lower triangle,
+then the imaginary parts of the strictly lower triangle (see
+`?Cholindexer`).
+
+```{r spec}
+spec_hat <- function(fit, init) {
+  k <- fit$r.iter
+  G <- tA2G(fit$thetas[[k]], fit$As[[k]], init)
+  array(apply(G, 3, inChol2spec, init = init),
+        dim = c(init$P^2, init$K, init$m))
+}
+specD <- spec_hat(fitD, initD)
+specC <- spec_hat(fitC, initC)
+specNW <- simplify2array(initD$NW)   # Nadaraya-Watson starting estimate
+
+rel_err <- function(S, init) {
+  mean(sapply(seq_len(init$m), function(i) {
+    truth <- init$truspec[, , init$rnd[i]]
+    sqrt(sum((S[, , i] - truth)^2) / sum(truth^2))
+  }))
+}
+round(c(NW = rel_err(specNW, initD),
+        NMCSDE.D = rel_err(specD, initD),
+        NMCSDE.C = rel_err(specC, initC)), 3)
+```
+
+The next plot shows the estimated spectra of one series from each model,
+with the true spectra as dashed lines. The four panels are the two auto
+spectra, the real part of the cross-spectrum (co-spectrum) and its imaginary
+part (quadrature spectrum).
+
+```{r plot, fig.height = 6}
+labs <- c("f11", "Re f21", "f22", "Im f21")
+ser <- match(1:3, initD$rnd)     # first series generated by each model
+op <- par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+for (j in 1:4) {
+  rng <- range(specD[j, , ser], initD$truspec[j, , ])
+  matplot(initD$omegas, specD[j, , ser], type = "l", lty = 1, col = 1:3,
+          ylim = rng, xlab = "Frequency", ylab = "", main = labs[j])
+  matlines(initD$omegas, initD$truspec[j, , 1:3], lty = 2, col = 1:3)
+}
+par(op)
+```
+
+`plot_sds(fitD, initD)` draws the same kind of plot for every series, one
+page per series.
+
+## Noncollective estimation
+
+Setting `which.spec = i` in `iterate()` fits series $i$ on its own. This
+gives the noncollective NMSDE estimate, which can be compared with the
+collective one.
+
+```{r separate}
+fit1 <- iterate(initD, lambda = 1, n.iter = 30, which.spec = 1, verbose = FALSE)
+G1 <- tA2G(fit1$thetas[[fit1$r.iter]], fit1$As[[fit1$r.iter]], initD)
+spec1 <- inChol2spec(G1[, , 1], initD)
+truth1 <- initD$truspec[, , initD$rnd[1]]
+round(c(separate = sqrt(sum((spec1 - truth1)^2) / sum(truth1^2)),
+        collective = sqrt(sum((specD[, , 1] - truth1)^2) / sum(truth1^2))), 3)
+```
+
+## Clustering the series
+
+The fitted scores $A_j$ give a low-dimensional summary of each series in
+the common subspace, so they are a natural input for clustering. Here we
+apply hierarchical clustering with Ward's method to the standardized scores,
+which is also the default in `launch_app()`. Log spectra work as well.
+Distances between raw spectra are dominated by a few large peaks, so they
+separate the groups less well.
+
+```{r cluster, fig.height = 3.5}
+scores <- fitD$As[[fitD$r.iter]]                   # M x R x P^2
+feat <- scale(matrix(scores, nrow = initD$m))       # M x (R P^2)
+hc <- hclust(dist(feat), method = "ward.D2")
+cl <- cutree(hc, k = 3)
+table(cluster = cl, model = initD$rnd)
+plot(hc, labels = initD$rnd, main = "Series labelled by generating model",
+     xlab = "", sub = "")
+```
+
+## Bootstrap confidence intervals
+
+`NMSDEBoot()` implements a multivariate spectral bootstrap. It simulates new
+discrete Fourier transforms from a fitted spectrum, refits the model and
+returns the bootstrap spectra. Pointwise percentile intervals follow from
+`quantile()`. The code below is not run here because it refits the model
+`nBoot` times.
+
+```{r boot, eval = FALSE}
+boot <- NMSDEBoot(specD, nBoot = 200, init = initD, lambda = 1,
+                  update_lam = TRUE, method = "collective")
+# 95% pointwise interval of f11 for series 1
+ci <- apply(boot[[1]][, , 1], 2, quantile, probs = c(0.025, 0.975))
+```
+
+## Interactive application
+
+`launch_app()` opens a 'shiny' application with the same steps (data
+description, elbow plot, basis functions, fitting and clustering) for the
+bundled, simulated or uploaded data.
+
+## References
+
+Nezampour, S., Nematollahi, A., Krafty, R. T. and Maadooliat, M. (2024). A
+new approach to nonparametric estimation of multivariate spectral density
+function using basis expansion. *Computational Statistics*, 39, 3625–3641.
+<https://doi.org/10.1007/s00180-023-01451-4>
+
+Maadooliat, M., Sun, Y. and Chen, T. (2018). Nonparametric collective
+spectral density estimation with an application to clustering the brain
+signals. *Statistics in Medicine*, 37(30), 4789–4806.
+<https://doi.org/10.1002/sim.7972>
+
+Berkowitz, J. and Diebold, F. X. (1998). Bootstrapping multivariate spectra.
+*Review of Economics and Statistics*, 80(4), 664–666.

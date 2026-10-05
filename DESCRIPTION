@@ -1,28 +1,45 @@
 Package: NMSDE
 Type: Package
 Title: Nonparametric Multivariate Spectral Density Estimation
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: c(
-    person("Shirin", "Nezampour", email = "shirin.nezampour@marquette.edu", role = c("aut", "cre")),
+    person("Shirin", "Nezampour", email = "sh.nezampour@gmail.com", role = c("aut", "cre")),
     person("Mehdi", "Maadooliat", email = "mehdi.maadooliat@marquette.edu", role = "aut"))
-Maintainer: Shirin Nezampour <sh.nezampour@gmail.com>
-URL: https://github.com/shnezam/NMSDE.git
-Description: Methods and tools for implementing nonparametric multivariate spectral density estimation
-    as described in Nezampour S., Maadooliat M. (Submitted). Nonparametric Multivariate Spectral Density Estimation. Manuscript under prepration. 
+Description: Nonparametric estimation of spectral density matrices of
+    multivariate stationary time series. The inverse spectral matrix is
+    parameterized through its complex Cholesky factor, whose components are
+    expanded in a B-spline basis and estimated by minimizing a penalized
+    Whittle likelihood with Newton-Raphson iterations, which guarantees
+    Hermitian positive-definite estimates (Nezampour et al., 2024)
+    <doi:10.1007/s00180-023-01451-4>. For a collection of multivariate time
+    series, the Cholesky components are assumed to lie in a common
+    low-dimensional subspace, giving collective estimates that borrow
+    strength across series and can be used to cluster the series in the
+    frequency domain, extending Maadooliat et al. (2018) <doi:10.1002/sim.7972>
+    to the multivariate setting. The smoothing parameter can be updated
+    within the iterations, and spectral bootstrap confidence intervals and an
+    interactive 'shiny' application are provided.
 License: GPL (>= 2)
+URL: https://github.com/shnezam/NMSDE
+BugReports: https://github.com/shnezam/NMSDE/issues
 Encoding: UTF-8
-LazyData: TRUE
-RoxygenNote: 7.3.2
-Imports: Rcpp,
-         RcppArmadillo,
-         dse,
-         vars,
-         factoextra,
-         fda,
-LinkingTo: Rcpp,
-           RcppArmadillo,
-Suggests: 
+LazyData: true
+Depends: R (>= 3.5.0)
+Imports:
+    fda,
+    graphics,
+    Rcpp,
+    shiny,
+    stats,
+    utils
+LinkingTo:
+    Rcpp,
+    RcppArmadillo
+Suggests:
+    dendextend,
     knitr,
-    rmarkdown
-Depends: R (>= 2.10)
+    markdown,
+    testthat (>= 3.0.0)
 VignetteBuilder: knitr
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.0

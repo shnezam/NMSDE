@@ -1,22 +1,114 @@
-#' @import shiny
-#' @importFrom graphics lines par plot title
-#' @importFrom stats fft
-#' @importFrom Rcpp sourceCpp
-#' @importFrom dse ARMA simulate
-#' @useDynLib NMSDE, .registration = TRUE
-
-
 # initial -----------------------------------------------------------------
 
+#' Initialize the NMCSDE algorithm
+#'
+#' Sets up everything needed to estimate the spectral density matrices of a
+#' collection of multivariate time series: the discrete Fourier transforms
+#' and periodograms, the B-spline basis and roughness penalty, the
+#' Nadaraya-Watson starting estimate, and the starting values of the
+#' low-rank parameters \eqn{(\Theta, A)}.
+#'
+#' The Nadaraya-Watson estimate of each spectral matrix (\code{\link{NWspec}})
+#' is inverted and factored by a complex Cholesky decomposition
+#' (\code{\link{spec2inChol}}). Its components are projected onto the B-spline
+#' basis, and a truncated singular value decomposition of the projected
+#' coefficients gives the starting values of \eqn{\Theta} and \eqn{A}. The
+#' columns of \eqn{\Theta} are orthonormal and those of \eqn{A} are ordered by
+#' decreasing singular value, which makes the factorization identifiable.
+#'
+#' @param X A list of \eqn{M} numeric matrices, one per time series. Each
+#'   matrix is \eqn{P \times T}{P x T}: rows are the \eqn{P \ge 2} component
+#'   series and columns are time points. All series must have the same
+#'   dimensions. The series are assumed to have mean zero.
+#' @param nbasis Number of B-spline basis functions \eqn{L}.
+#' @param norder Order of the B-splines (degree + 1); \code{4} gives cubic
+#'   splines.
+#' @param R Number of data-driven basis functions (the rank of the collective
+#'   model). It is closely related to the number of clusters among the series;
+#'   \code{init$elbow} can help to choose it. Must not exceed \eqn{M} when
+#'   \code{theta_P2 = TRUE}.
+#' @param pen Type of roughness penalty matrix \eqn{D}: \code{"diff"} for the
+#'   difference penalty \eqn{D = L_a^\top L_a}{D = t(L_a) L_a} built from
+#'   \eqn{a}-th order differences of adjacent coefficients, or any other value
+#'   (e.g. \code{"deriv"}) for the integrated squared \eqn{a}-th derivative of
+#'   the B-splines.
+#' @param a Order of the differences (or derivative) used in the penalty.
+#'   With \code{pen = "diff"}, \code{a = 0} gives a ridge penalty
+#'   \eqn{D = I}. The value is stored in the result and used by
+#'   \code{\link{iterate}} when updating \eqn{\lambda}.
+#' @param theta_P2 Logical. \code{TRUE} (default) fits the \emph{different
+#'   bases} model, with one coefficient matrix \eqn{\Theta_j} per Cholesky
+#'   component; \code{FALSE} fits the \emph{common bases} model, with one
+#'   \eqn{\Theta} shared by all \eqn{P^2} components.
+#' @param tru Optional list describing the true vector autoregressive models
+#'   of simulated data, used only to compute the true spectra for comparison.
+#'   It has components \code{paras} (a list with one element per model, each a
+#'   list of \eqn{P \times P}{P x P} lag-polynomial matrices
+#'   \eqn{I, -\Phi_1, \dots, -\Phi_d}), \code{sigma} (innovation covariance
+#'   matrix) and \code{rnd} (the model index of each series). See
+#'   \code{\link{datPar}} for an example.
+#' @param f.r Optional integer vector \code{c(first, last)} restricting the
+#'   analysis to Fourier frequencies \eqn{\omega_k = k/T} with
+#'   \code{first <= k <= last}. By default all \eqn{K = \lfloor (T-1)/2 \rfloor}{K = floor((T-1)/2)}
+#'   frequencies are used.
+#'
+#' @return A list (referred to as \code{init} elsewhere in this package) with
+#'   components
+#'   \item{P, m, K, R}{the dimension of the series, the number of series
+#'     \eqn{M}, the number of frequencies and the rank.}
+#'   \item{omegas}{the \eqn{K} frequencies, in cycles per unit time.}
+#'   \item{f.r}{the frequency index range used.}
+#'   \item{B, knots}{the \eqn{K \times L}{K x L} B-spline basis matrix and its
+#'     knots.}
+#'   \item{D, pen, a}{the \eqn{L \times L}{L x L} penalty matrix and the
+#'     arguments used to build it.}
+#'   \item{indexer, Nreal}{output of \code{\link{Cholindexer}} and the number
+#'     \eqn{P(P+1)/2} of real components.}
+#'   \item{drivG}{derivatives used by the Newton-Raphson steps (see
+#'     \code{\link{drivG}}).}
+#'   \item{periods, tildeX}{lists with the vectorized periodograms
+#'     (\eqn{P^2 \times K}{P^2 x K}) and DFTs (\eqn{P \times K}{P x K}) of each
+#'     series (see \code{\link{time2freq}}).}
+#'   \item{NW}{list of Nadaraya-Watson estimates (see \code{\link{NWspec}}).}
+#'   \item{thetas, As}{starting values: \code{thetas} is an
+#'     \eqn{L \times R \times P^2}{L x R x P^2} array (different bases) or an
+#'     \eqn{L \times R}{L x R} matrix (common bases); \code{As} is an
+#'     \eqn{M \times R \times P^2}{M x R x P^2} array.}
+#'   \item{theta.tA}{\eqn{L \times M \times P^2}{L x M x P^2} array of basis
+#'     coefficients of the projected starting estimate.}
+#'   \item{elbow}{total within-cluster sum of squares from hierarchical
+#'     clustering (Ward's method) of the starting estimates into
+#'     \eqn{1, 2, \dots} clusters; plot it to choose \code{R} by the elbow
+#'     method.}
+#'   \item{truspec, rnd}{only when \code{tru} is supplied: a
+#'     \eqn{P^2 \times K \times}{P^2 x K x} (number of models) array of true
+#'     spectra (see \code{\link{psd}}) and the model index of each series.}
+#'
+#' @references Nezampour, S., Nematollahi, A., Krafty, R. T. and Maadooliat,
+#'   M. (2024). A new approach to nonparametric estimation of multivariate
+#'   spectral density function using basis expansion. \emph{Computational
+#'   Statistics}, 39, 3625--3641. \doi{10.1007/s00180-023-01451-4}
+#' @seealso \code{\link{iterate}}
+#' @examples
+#' # six bivariate series of length 200 (see ?dat)
+#' X <- dat$X1
+#' init <- initial(X, nbasis = 15, R = 3, tru = datPar$modelPar1)
+#' dim(init$thetas)
+#' plot(init$elbow, type = "b", xlab = "Number of clusters",
+#'      ylab = "Within-cluster sum of squares")
 #' @export initial
-initial <- function(X, nbasis = 10, norder = 4, R = length(input$model), 
-                    pen = "diff", a = 2, theta_P2 = T, tru = NULL, f.r = NULL) {
+initial <- function(X, nbasis = 10, norder = 4, R,
+                    pen = "diff", a = 2, theta_P2 = TRUE, tru = NULL, f.r = NULL) {
   # set up some basic values
   P <- nrow(X[[1]])
+  if (is.null(P) || P < 2) stop("each element of 'X' must be a P x T matrix with P >= 2")
   P2 <- P^2
   Nreal <- P * (P + 1) / 2
   len <- ncol(X[[1]])
   m <- length(X)
+  if (R > nbasis || (theta_P2 && R > m)) {
+    stop("'R' must not exceed 'nbasis' or, when 'theta_P2' is TRUE, the number of series")
+  }
   K <- floor((len - 1) / 2)
   omegas <- (1:K) / len
   indexer <- Cholindexer(P)
@@ -24,28 +116,29 @@ initial <- function(X, nbasis = 10, norder = 4, R = length(input$model),
     f.r <- c(1, length(omegas))
   } else {
     omegas <- omegas[f.r[1]:f.r[2]]
-    K <- length(omegas) 
+    K <- length(omegas)
   }
 
   # Bases(B splines)[K*L] and Penalty matrix [L*L]
   knots <- seq(omegas[1] - (1 / len), omegas[length(omegas)] + (1 / len),
               length.out = nbasis - norder + 2)
   B <- fda::bsplineS(omegas, breaks = knots, norder = norder)
-  
+
   # Penalty functions
   if (pen == "diff") {
     if (a != 0) {
-      L <- diff(diag(nbasis), differences = 2)
+      L <- diff(diag(nbasis), differences = a)
     } else {
       L <- diag(nbasis)
     }
     D <- t(L) %*% L
   } else {
-    D <- fda::bsplinepen(fda::create.bspline.basis(nbasis = nbasis, norder = norder))
+    D <- fda::bsplinepen(fda::create.bspline.basis(rangeval = range(knots), breaks = knots,
+                                                   norder = norder), Lfdobj = a)
   }
 
-  init <- list(P = P, m = m, K = K, R= R, omegas = omegas, f.r = f.r, B = B, D = D, 
-               indexer = indexer, Nreal = Nreal, knots = knots)
+  init <- list(P = P, m = m, K = K, R= R, omegas = omegas, f.r = f.r, B = B, D = D,
+               pen = pen, a = a, indexer = indexer, Nreal = Nreal, knots = knots)
   
   # some required derivatives for Fisher-scoring algorithm
   init$drivG <- drivG(init)
@@ -64,19 +157,64 @@ initial <- function(X, nbasis = 10, norder = 4, R = length(input$model),
   # get initial values by projecting the Cholesky components (NW) 
   #onto the linear subspace (of the basis)
   init <- append(init, G2tA(NWG_m, theta_P2, init))
-  
+
+  # within-cluster sum of squares of the initial estimates (elbow method for R)
+  init$elbow <- elbow_wss(init)
+
   # get true spectrum
   if (!is.null(tru)) {
+    if (is.null(tru$parasmdl)) {
+      tru$parasmdl <- lapply(tru$paras, function(Phi) list(Phi, list(diag(P)), tru$sigma))
+    }
     init$truspec <- sapply(tru$parasmdl, psd, init, simplify = "array")
-    
+
     init$rnd <- tru$rnd
   }
 
   return(init)
 }
 
+# elbow_wss ---------------------------------------------------------------
+
+# Total within-cluster sum of squares of Ward clusterings of the initial
+# (projected Nadaraya-Watson) Cholesky components, for 1, ..., max.k clusters
+elbow_wss <- function(init, max.k = 10) {
+  feat <- do.call(cbind, lapply(seq_len(init$P^2), function(j) t(init$B %*% init$theta.tA[, , j])))
+  if (nrow(feat) < 2) return(0)
+  max.k <- min(max.k, nrow(feat))
+  clust <- hclust(dist(feat), method = "ward.D2")
+  sapply(seq_len(max.k), function(k) {
+    cl <- cutree(clust, k = k)
+    sum(sapply(unique(cl), function(g) {
+      x <- feat[cl == g, , drop = FALSE]
+      sum(sweep(x, 2, colMeans(x))^2)
+    }))
+  })
+}
+
 # time2freq ---------------------------------------------------------------
 
+#' Discrete Fourier transform and periodogram of a multivariate time series
+#'
+#' Computes the scaled discrete Fourier transform
+#' \eqn{Y_k = T^{-1/2} \sum_{t=1}^T X_t e^{-2\pi i \omega_k t}}{Y_k = T^(-1/2) sum_t X_t exp(-2 pi i omega_k t)}
+#' and the periodogram matrices \eqn{S(\omega_k) = Y_k Y_k^*} at the
+#' frequencies selected in \code{init}.
+#'
+#' @param x A \eqn{P \times T}{P x T} numeric matrix (rows are components).
+#' @param init List returned by \code{\link{initial}} (only \code{P},
+#'   \code{K}, \code{f.r}, \code{Nreal} and \code{indexer} are used).
+#'
+#' @return A list with
+#'   \item{tildeX}{\eqn{P \times K}{P x K} complex matrix of DFTs.}
+#'   \item{perds}{\eqn{P^2 \times K}{P^2 x K} matrix of vectorized
+#'     periodograms (see \code{\link{Cholindexer}} for the ordering).}
+#' @seealso \code{\link{NWspec}}
+#' @examples
+#' init <- initial(dat$X1, nbasis = 10, R = 2)
+#' fd <- time2freq(dat$X1[[1]], init)
+#' matplot(init$omegas, t(fd$perds), type = "l", lty = 1,
+#'         xlab = "Frequency", ylab = "Periodogram")
 #' @export time2freq
 time2freq <- function(x, init) {
   
@@ -103,6 +241,24 @@ time2freq <- function(x, init) {
 
 #Nadaraya-Watson kernel regression estimate
 
+#' Nadaraya-Watson kernel estimate of a spectral matrix
+#'
+#' Smooths the vectorized periodogram across frequencies with a Gaussian
+#' kernel, using bandwidth \eqn{h = (20/K)^2}. The result is used to start the
+#' Newton-Raphson iterations and as a simple competing estimator.
+#'
+#' @param perds \eqn{P^2 \times K}{P^2 x K} matrix of vectorized periodograms,
+#'   as returned in \code{time2freq()$perds}.
+#' @param init List returned by \code{\link{initial}} (only \code{omegas} is
+#'   used).
+#'
+#' @return A \eqn{P^2 \times K}{P^2 x K} matrix with the vectorized smoothed
+#'   spectral matrices.
+#' @seealso \code{\link{time2freq}}, \code{\link{spec2inChol}}
+#' @examples
+#' init <- initial(dat$X1, nbasis = 10, R = 2)
+#' nw <- NWspec(init$periods[[1]], init)
+#' all.equal(nw, init$NW[[1]])
 #' @export NWspec
 NWspec <- function(perds,init) {
   P2 <- nrow(perds)
@@ -131,6 +287,21 @@ kerf <- function(z) {
 
 # Cholesky decomposition (for a complex matrix)
 
+#' Complex Cholesky decomposition
+#'
+#' Computes the lower-triangular Cholesky factor \eqn{G} of a Hermitian
+#' positive-definite (possibly complex) matrix, so that \eqn{f = G G^*}.
+#'
+#' @param f A \eqn{P \times P}{P x P} Hermitian positive-definite matrix with
+#'   \eqn{P \ge 2}.
+#'
+#' @return The \eqn{P \times P}{P x P} lower-triangular factor \eqn{G}, with a
+#'   real positive diagonal.
+#' @seealso \code{\link{spec2inChol}}
+#' @examples
+#' f <- matrix(c(2, 1 - 1i, 1 + 1i, 3), 2, 2)
+#' G <- Chol(f)
+#' all.equal(G %*% Conj(t(G)), f)
 #' @export Chol
 Chol <- function(f) {
   Gw <- sqrt(f[1, 1])
@@ -151,6 +322,29 @@ Chol <- function(f) {
 
 # Takes spectral components and gives the inverse Cholesky components
 
+#' Convert between spectral matrices and inverse Cholesky components
+#'
+#' \code{spec2inChol} maps vectorized spectral matrices \eqn{f(\omega_k)} to
+#' the vectorized components of \eqn{G(\omega_k)}, the Cholesky factor of
+#' \eqn{f^{-1}(\omega_k) = G G^*}. \code{inChol2spec} is the inverse map, and
+#' is used to rebuild spectral estimates from fitted Cholesky components (see
+#' \code{\link{tA2G}}). Any real input to \code{inChol2spec} with a nonzero
+#' diagonal gives a Hermitian positive-definite spectral matrix.
+#'
+#' @param spec \eqn{P^2 \times K}{P^2 x K} matrix of vectorized spectral
+#'   matrices (see \code{\link{Cholindexer}} for the ordering).
+#' @param inChol \eqn{P^2 \times K}{P^2 x K} matrix of vectorized Cholesky
+#'   components.
+#' @param init List returned by \code{\link{initial}} (only \code{P},
+#'   \code{K}, \code{Nreal} and \code{indexer} are used).
+#'
+#' @return A \eqn{P^2 \times K}{P^2 x K} matrix: the vectorized inverse
+#'   Cholesky components (\code{spec2inChol}) or spectral matrices
+#'   (\code{inChol2spec}).
+#' @examples
+#' init <- initial(dat$X1, nbasis = 10, R = 2)
+#' G <- spec2inChol(init$NW[[1]], init)
+#' all.equal(inChol2spec(G, init), init$NW[[1]])
 #' @export spec2inChol
 spec2inChol <- function(spec, init) {
   
@@ -186,6 +380,7 @@ spec2inChol <- function(spec, init) {
 # Takes the inverse Cholesky components and returns the components of the 
 # spectral matrix
 
+#' @rdname spec2inChol
 #' @export inChol2spec
 inChol2spec <- function(inChol, init) {
   P2 <- init$P^2
@@ -224,6 +419,31 @@ inChol2spec <- function(inChol, init) {
 
 # True power spectral density(PSD) for VARMA(p,q)
 
+#' True spectral density matrix of a VARMA process
+#'
+#' Evaluates the spectral density matrix
+#' \eqn{f(\omega) = \Phi(\omega)^{-1} \Theta(\omega) \Sigma \Theta(\omega)^* \Phi(\omega)^{-*}}{f(w) = Phi(w)^-1 Theta(w) Sigma Theta(w)^* Phi(w)^-*}
+#' of the VARMA process \eqn{\Phi(L) X_t = \Theta(L) \epsilon_t}{Phi(L) X_t = Theta(L) e_t}
+#' at the frequencies in \code{init}, where
+#' \eqn{\Phi(\omega) = \sum_{j} \Phi_j e^{-2\pi i \omega j}}{Phi(w) = sum_j Phi_j exp(-2 pi i w j)}.
+#'
+#' @param paras A list of three elements: a list of the AR lag-polynomial
+#'   matrices \eqn{I, -\Phi_1, \dots, -\Phi_d}, a list of the MA lag-polynomial
+#'   matrices \eqn{I, \Theta_1, \dots, \Theta_q}, and the innovation covariance
+#'   matrix \eqn{\Sigma}.
+#' @param init List returned by \code{\link{initial}} (only \code{P},
+#'   \code{K}, \code{omegas}, \code{Nreal} and \code{indexer} are used).
+#'
+#' @return A \eqn{P^2 \times K}{P^2 x K} matrix of vectorized spectral
+#'   matrices.
+#' @examples
+#' init <- initial(dat$X1, nbasis = 10, R = 2)
+#' # bivariate VAR(1) with correlated innovations
+#' Phi1 <- matrix(c(0, -0.6, 0.5, -0.2), 2, 2)
+#' Sigma <- matrix(c(1, 0.9, 0.9, 1), 2, 2)
+#' f <- psd(list(list(diag(2), -Phi1), list(diag(2)), Sigma), init)
+#' matplot(init$omegas, t(f), type = "l", lty = 1,
+#'         xlab = "Frequency", ylab = "Spectral components")
 #' @export psd
 psd <- function(paras, init) {
   Phi <- paras[[1]]
@@ -264,8 +484,33 @@ psd <- function(paras, init) {
 
 # Whittle negative loglikelihood
 
-#' @export loglike
+#' Penalized Whittle negative log-likelihood
 #'
+#' Evaluates the Whittle negative log-likelihood
+#' \deqn{\sum_{i=1}^M \sum_{k=1}^K \left\{-\log|G_i G_i^*| + Y_{i,k}^* G_i G_i^* Y_{i,k}\right\}}{sum_i sum_k { -log|G_i G_i^*| + Y_ik^* G_i G_i^* Y_ik }}
+#' of the model \eqn{\Gamma_j = B \Theta_j A_j^\top}{Gamma_j = B Theta_j t(A_j)}
+#' and adds the roughness penalty
+#' \eqn{\lambda\,\mathrm{tr}(\Theta_j^\top D \Theta_j)}{lambda tr(t(Theta_j) D Theta_j)}.
+#' This is the reference R implementation; \code{\link{loglike_c_cube}} is a
+#' faster C++ version for the different bases model.
+#'
+#' @param thetas Basis coefficients: an \eqn{L \times R \times P^2}{L x R x P^2}
+#'   array (different bases) or an \eqn{L \times R}{L x R} matrix (common
+#'   bases).
+#' @param As \eqn{M \times R \times P^2}{M x R x P^2} array of scores.
+#' @param lambda Smoothing parameter. For different bases: a scalar, a vector
+#'   of length \eqn{P^2} or a \eqn{P^2 \times R}{P^2 x R} matrix. For common
+#'   bases: a scalar or a vector of length \eqn{R}.
+#' @param init List returned by \code{\link{initial}}.
+#' @param tildeX List of \eqn{M} complex \eqn{P \times K}{P x K} matrices of
+#'   DFTs, usually \code{init$tildeX}.
+#'
+#' @return A list with components \code{ploglike} (penalized) and
+#'   \code{loglike} (unpenalized) negative log-likelihood.
+#' @examples
+#' init <- initial(dat$X1, nbasis = 10, R = 2)
+#' loglike(init$thetas, init$As, lambda = 1, init, init$tildeX)
+#' @export loglike
 loglike <- function(thetas, As, lambda, init, tildeX) {
   hatG_m <- tA2G(thetas, As, init)
   l <- matrix(0, nrow = init$K, ncol = nrow(As))
@@ -278,7 +523,7 @@ loglike <- function(thetas, As, lambda, init, tildeX) {
       ## print(Cholmat_i)
 
       # get the loglikelihood
-      l[k, i] <- -log(prod(eigen(Cholmat_i %*% Conj(t(Cholmat_i)), only.values = T)$values)) + Conj(t(tildeX[[i]][, k])) %*% Cholmat_i %*% Conj(t(Cholmat_i)) %*% tildeX[[i]][, k]
+      l[k, i] <- -log(prod(eigen(Cholmat_i %*% Conj(t(Cholmat_i)), only.values = TRUE)$values)) + Conj(t(tildeX[[i]][, k])) %*% Cholmat_i %*% Conj(t(Cholmat_i)) %*% tildeX[[i]][, k]
     }
   }
   loglike <- Re(sum(l))
@@ -310,6 +555,23 @@ loglike <- function(thetas, As, lambda, init, tildeX) {
 # [,1]: index of the vector (1,...,P^2); [,2]: index of real or not {0,1}; [,3]: row number(1,...,P)
 # [,4]: column number (1,...,(row number)); [,5]: index of diagonal elements {1,0}
 
+#' Index of the vectorized Cholesky and spectral components
+#'
+#' Describes how a \eqn{P \times P}{P x P} Hermitian matrix, or a
+#' lower-triangular complex matrix, is stored as a real vector of length
+#' \eqn{P^2}: the real parts of the \eqn{P(P+1)/2} lower-triangular entries
+#' come first (column by column), followed by the imaginary parts of the
+#' \eqn{P(P-1)/2} strictly lower-triangular entries.
+#'
+#' @param P Dimension of the time series (\eqn{P \ge 2}).
+#'
+#' @return A \eqn{P^2 \times 5}{P^2 x 5} integer-valued matrix whose columns
+#'   give, for each element of the vector: its position; \code{1} for a real
+#'   part and \code{0} for an imaginary part; the row of the matrix entry; the
+#'   column of the matrix entry; and \code{1} if the entry is on the diagonal.
+#' @examples
+#' Cholindexer(2)
+#' Cholindexer(3)
 #' @export Cholindexer
 Cholindexer <- function(P) {
   Nreal <- P * (P + 1) / 2
@@ -328,6 +590,25 @@ Cholindexer <- function(P) {
 # drivG -------------------------------------------------------------------
 
 # Required derivatives for Fisher-scoring algorithm
+#' Derivatives of the Cholesky factor
+#'
+#' Computes the derivatives needed by the Newton-Raphson (Fisher scoring)
+#' steps: the derivative \eqn{\mathcal{D}G_j}{DG_j} of the Cholesky factor
+#' \eqn{G} with respect to each of its \eqn{P^2} vectorized components, and
+#' the second derivatives of \eqn{G G^*}. Called by \code{\link{initial}}.
+#'
+#' @param init A list with at least the components \code{P} and
+#'   \code{indexer} (see \code{\link{Cholindexer}}).
+#'
+#' @return A list with
+#'   \item{dG}{list of \eqn{P^2} matrices \eqn{\partial G / \partial g_j}{dG/dg_j}.}
+#'   \item{HGG}{\eqn{P \times P \times P^2 \times P^2}{P x P x P^2 x P^2} array
+#'     of \eqn{\partial^2 (G G^*) / \partial g_{j_1} \partial g_{j_2}}{d^2(GG^*)/dg_j1 dg_j2}.}
+#'   \item{HGGvec_c}{the same second derivatives with each \eqn{P \times P}{P x P}
+#'     matrix vectorized.}
+#' @examples
+#' d <- drivG(list(P = 2, indexer = Cholindexer(2)))
+#' d$dG
 #' @export drivG
 drivG <- function(init) {
   
@@ -360,7 +641,7 @@ G2tA <- function(G_m, theta_P2, init) {
   theta.tA <- array(0, dim = c(ncol(init$B), init$m, init$P^2))
   
   for (j in 1:init$P^2) theta.tA[, , j] <- smooth %*% G_m[j, , ]
-  if (theta_P2 == T) {
+  if (isTRUE(theta_P2)) {
     svd.theta.tA <- list()
     thetas <- array(0, dim = c(ncol(init$B), init$R, init$P^2))
     
@@ -391,6 +672,29 @@ G2tA <- function(G_m, theta_P2, init) {
 # tA2G --------------------------------------------------------------------
 
 # Takes thetas and As and reconstructs G
+#' Reconstruct the Cholesky components from the model parameters
+#'
+#' Evaluates \eqn{\Gamma_j = B \Theta_j A_j^\top}{Gamma_j = B Theta_j t(A_j)},
+#' \eqn{j = 1, \dots, P^2}, the vectorized inverse Cholesky components of all
+#' series at all frequencies. Apply \code{\link{inChol2spec}} to each slice to
+#' obtain the spectral density estimates.
+#'
+#' @param thetas Basis coefficients: an \eqn{L \times R \times P^2}{L x R x P^2}
+#'   array (different bases) or an \eqn{L \times R}{L x R} matrix (common
+#'   bases).
+#' @param As \eqn{M \times R \times P^2}{M x R x P^2} array of scores.
+#' @param init List returned by \code{\link{initial}}.
+#'
+#' @return A \eqn{P^2 \times K \times M}{P^2 x K x M} array; slice \code{[, , i]}
+#'   holds the vectorized Cholesky components of series \eqn{i}.
+#' @seealso \code{\link{iterate}}
+#' @examples
+#' init <- initial(dat$X1, nbasis = 10, R = 2)
+#' G <- tA2G(init$thetas, init$As, init)
+#' # spectral estimates of all series: P^2 x K x M
+#' spec <- array(apply(G, 3, inChol2spec, init = init),
+#'               dim = c(init$P^2, init$K, init$m))
+#' dim(spec)
 #' @export tA2G
 tA2G <- function(thetas, As, init) {
   hatG_m <- array(0, dim = c(init$P^2, init$K, nrow(As)))
@@ -446,29 +750,29 @@ init.theta.A_i <- function(init, i = 1) {
 
 #----------------------------------------------------------------------------------------------
 ##Workingfish
-Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init, tildeX) {
+Workingfish <- function(thetas, As, lambda, init, tildeX) {
   nbasis <- ncol(init$B)
   norder <- nbasis - length(init$knots) + 2
   P2 <- init$P^2
   R <- ncol(init$thetas)
   if (!is.matrix(thetas)) {
-    U.theta <- matrix(0, nr = nbasis * P2, nc = R)
+    U.theta <- matrix(0, nrow = nbasis * P2, ncol = R)
     H.theta <- array(0, dim = c(nbasis * P2, nbasis * P2, R))
     F.theta <- array(0, dim = c(nbasis * P2, nbasis * P2, R))
     tmp1i <- F.theta
-    theta.chng <- matrix(0, nr = nbasis * P2, nc = R)
+    theta.chng <- matrix(0, nrow = nbasis * P2, ncol = R)
     curr.thetas <- array(0, dim = c(nbasis, R, P2))
     theta_L.P2_R <- apply(thetas, 2, as.vector) # L*R*P2 array (thetas) into L.P2*R matrix
   } else {
-    U.theta <- matrix(0, nr = nbasis, nc = R)
+    U.theta <- matrix(0, nrow = nbasis, ncol = R)
     H.theta <- array(0, dim = c(nbasis, nbasis, R))
     F.theta <- array(0, dim = c(nbasis, nbasis, R))
     tmp1i <- F.theta
-    theta.chng <- matrix(0, nr = nbasis, nc = R)
-    curr.thetas <- matrix(0, nr = nbasis, nc = R)
+    theta.chng <- matrix(0, nrow = nbasis, ncol = R)
+    curr.thetas <- matrix(0, nrow = nbasis, ncol = R)
   }
 
-  A.chng <- matrix(0, nr = R * P2, nc = nrow(As))
+  A.chng <- matrix(0, nrow = R * P2, ncol = nrow(As))
   curr.As <- array(0, dim = c(nrow(As), R, P2))
   A_R.P2_m <- apply(As, 1, as.vector) # m*R*P2 array (As) into R.P2*m matrix
   hatG_m <- tA2G(thetas, As, init)
@@ -477,12 +781,12 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init, tildeX) 
 
   for (i in 1:nrow(As)) {
     # get the score,Hessian and negative Fisher matrices for A
-    U.A_i <- matrix(0, nr = R * P2, nc = 1)
+    U.A_i <- matrix(0, nrow = R * P2, ncol = 1)
     FA_k_i <- array(0, dim = c(R, P2, R, P2, init$K))
     HA_k_i <- array(0, dim = c(R, P2, R, P2, init$K))
-    G_i <- matrix(0, nr = init$P, nc = init$P)
-    F_i <- matrix(0, nr = init$P, nc = init$P)
-    temp1_i <- matrix(0, nr = P2, nc = init$K) # components of the first derivative of loglikelihood w.r.t Cholesky components(vecG)
+    G_i <- matrix(0, nrow = init$P, ncol = init$P)
+    F_i <- matrix(0, nrow = init$P, ncol = init$P)
+    temp1_i <- matrix(0, nrow = P2, ncol = init$K) # components of the first derivative of loglikelihood w.r.t Cholesky components(vecG)
     temp4_i <- array(0, dim = c(nbasis, P2, init$K, R)) # components of the first derivative of loglikelihood w.r.t thetas (chain rule)
     temp6_i <- array(0, dim = c(nbasis, P2, nbasis, P2, init$K, R)) # components of the second derivative of loglikelihood w.r.t thetas (chain rule)
     temp9_i <- array(0, dim = c(nbasis, P2, nbasis, P2, init$K, R)) # components of negative Fisher matrix for thetas (expectation of Hessian)
@@ -502,14 +806,14 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init, tildeX) 
         F_i[init$indexer[p, 4], init$indexer[p, 3]] <- F_i[init$indexer[p, 4], init$indexer[p, 3]] - 1i * spec[p, k, i]
       }
 
-      UA_k_i <- matrix(0, nr = R, nc = P2)
-      temp2_k_i <- matrix(0, nr = P2, nc = P2)
+      UA_k_i <- matrix(0, nrow = R, ncol = P2)
+      temp2_k_i <- matrix(0, nrow = P2, ncol = P2)
       temp3_k_i <- temp2_k_i
       temp8_k_i <- temp2_k_i
 
       b <- max(which(init$knots <= init$omegas[k])) # select nonzero basis at freq k
       if (!is.matrix(thetas)) {
-        B.theta_k <- matrix(0, nr = R, nc = P2)
+        B.theta_k <- matrix(0, nrow = R, ncol = P2)
         for (j in 1:P2) for (r in 1:R) B.theta_k[r, j] <- sum(init$B[k, b:(norder + b - 1)] * thetas[b:(norder + b - 1), r, j])
       } else {
         B.theta_k <- rep(0, 0)
@@ -580,8 +884,8 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init, tildeX) 
 
     if (i == nrow(As)) {
       if (!is.matrix(thetas)) {
-        DF <- matrix(0, nr = P2, nc = R)
-        if (is.vector(lambda)) lambda <- matrix(lambda, nr = P2, nc = R)
+        DF <- matrix(0, nrow = P2, ncol = R)
+        if (is.vector(lambda)) lambda <- matrix(lambda, nrow = P2, ncol = R)
         for (r in 1:R) {
           tmp1i[, , r] <- solve(F.theta[, , r] + kronecker(diag(lambda[, r], P2), init$D))
           theta.chng[, r] <- tmp1i[, , r] %*% (U.theta[, r] + kronecker(diag(lambda[, r], P2), init$D) %*% theta_L.P2_R[, r])
@@ -603,12 +907,12 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init, tildeX) 
   # Step-halving algorithm
   repit <- TRUE
   counter <- 0
-  while (repit) {
+  while (repit && counter < 30) { # cap the number of step halvings
     tau <- (0.5)^counter
-    for (i in 1:nrow(As)) curr.As[i, , ] <- matrix(A_R.P2_m[, i] - tau * A.chng[, i], nr = R, nc = P2)
+    for (i in 1:nrow(As)) curr.As[i, , ] <- matrix(A_R.P2_m[, i] - tau * A.chng[, i], nrow = R, ncol = P2)
 
     if (!is.matrix(thetas)) {
-      for (r in 1:R) curr.thetas[, r, ] <- matrix(theta_L.P2_R[, r] - tau * theta.chng[, r], nr = nbasis, nc = P2)
+      for (r in 1:R) curr.thetas[, r, ] <- matrix(theta_L.P2_R[, r] - tau * theta.chng[, r], nrow = nbasis, ncol = P2)
     } else {
       for (r in 1:R) curr.thetas[, r] <- thetas[, r] - tau * theta.chng[, r]
     }
@@ -624,9 +928,71 @@ Workingfish <- function(thetas = ini$thetas, As = ini$As, lambda, init, tildeX) 
 # iterate -----------------------------------------------------------------
 
 # Iterartive algorithm
+#' Fit the NMCSDE model by penalized Whittle likelihood
+#'
+#' Minimizes the penalized Whittle negative log-likelihood with Newton-Raphson
+#' (Fisher scoring) iterations and step halving. Each iteration updates the
+#' scores \eqn{A} and the basis coefficients \eqn{\Theta}, and optionally the
+#' smoothing parameter.
+#'
+#' When \code{update.lam = TRUE}, the smoothing parameter is updated within
+#' the iterations by
+#' \deqn{\lambda_{new}^{-1} = \frac{\mathrm{tr}(\hat\Theta_{old}^\top D \hat\Theta_{old})}{\mathrm{df}(\hat\lambda_{old}) - (a-1)},}{1/lambda_new = tr(t(Theta_old) D Theta_old) / (df(lambda_old) - (a - 1)),}
+#' where \eqn{\mathrm{df}(\lambda)}{df(lambda)} are the effective degrees of
+#' freedom (Schall, 1991). This avoids a grid search. With
+#' \code{update.lam = FALSE} the value of \code{lambda} is kept fixed and can
+#' be chosen by minimizing the returned \code{AIC} over a grid.
+#'
+#' Iterations stop when the decrease of the penalized negative
+#' log-likelihood is at most \eqn{0.2\sqrt{K}}{0.2 sqrt(K)} or after
+#' \code{n.iter} iterations.
+#'
+#' @param init List returned by \code{\link{initial}}.
+#' @param lambda Starting (or fixed) smoothing parameter. For the different
+#'   bases model: a scalar or a vector of length \eqn{P^2} (one value per
+#'   Cholesky component). For the common bases model: a scalar or a vector of
+#'   length \eqn{R}.
+#' @param a Order of the penalty, used in the update of \eqn{\lambda}. Defaults
+#'   to the value used in \code{\link{initial}}.
+#' @param n.iter Maximum number of iterations.
+#' @param which.spec Optional integer vector of series indices. If given, only
+#'   these series are fitted (for example \code{which.spec = i} gives the
+#'   noncollective NMSDE estimate of series \eqn{i}); starting values are
+#'   recomputed from \code{init} for this subset.
+#' @param update.lam Logical; update \eqn{\lambda} within the iterations?
+#' @param tildeX Optional list of DFT matrices to use instead of
+#'   \code{init$tildeX} (used by \code{\link{NMSDEBoot}}).
+#' @param verbose Logical; print the progress of each iteration?
+#'
+#' @return A list with
+#'   \item{thetas, As}{lists with the parameter values at each iteration;
+#'     the last element is the final estimate.}
+#'   \item{ploglikes}{penalized negative log-likelihood at each iteration.}
+#'   \item{Lambda}{list of smoothing parameter values at each iteration.}
+#'   \item{AIC}{penalized negative log-likelihood plus twice the effective
+#'     degrees of freedom, at each iteration.}
+#'   \item{r.iter}{number of parameter sets stored (iterations + 1).}
+#'   \item{which.spec}{the \code{which.spec} argument.}
+#'
+#' @references Schall, R. (1991). Estimation in generalized linear models
+#'   with random effects. \emph{Biometrika}, 78(4), 719--727.
+#'   \doi{10.1093/biomet/78.4.719}
+#' @seealso \code{\link{initial}}, \code{\link{tA2G}}, \code{\link{plot_sds}}
+#' @examples
+#' X <- dat$X1
+#' init <- initial(X, nbasis = 10, R = 3)
+#' fit <- iterate(init, lambda = 1, n.iter = 5)
+#' fit$ploglikes
+#'
+#' # spectral estimates of all series (P^2 x K x M)
+#' last <- fit$r.iter
+#' G <- tA2G(fit$thetas[[last]], fit$As[[last]], init)
+#' spec <- array(apply(G, 3, inChol2spec, init = init),
+#'               dim = c(init$P^2, init$K, init$m))
 #' @export iterate
-iterate <- function(init, lambda = 0, a = 2, n.iter = 40, which.spec = NULL, update.lam = T, tildeX=NULL) {
-  
+iterate <- function(init, lambda = 0, a = if (is.null(init$a)) 2 else init$a, n.iter = 40,
+                    which.spec = NULL, update.lam = TRUE, tildeX = NULL, verbose = TRUE) {
+
   eps <- 0.2*sqrt(init$K)
   #eps <- 2
   thetas.lst <- list()
@@ -671,7 +1037,6 @@ iterate <- function(init, lambda = 0, a = 2, n.iter = 40, which.spec = NULL, upd
     } else {
       workvals <- Workingfish_cube(thetas.lst[[l]], As.lst[[l]], Lambda[[l]], init, tildeX)
       #workvals <- Workingfish(thetas.lst[[l]], As.lst[[l]], Lambda[[l]], init, tildeX)
-      print(workvals$stepH)
     }
    
     thetas.lst[[l + 1]] <- Re(workvals$thetas)
@@ -710,7 +1075,7 @@ iterate <- function(init, lambda = 0, a = 2, n.iter = 40, which.spec = NULL, upd
     diff <- (ploglikes[l] - ploglikes[l + 1])
     l <- l + 1; #
     
-    cat(paste("\n l=", (l), " pLogL=", round(ploglikes[(l)]), " AIC=", round(AIC[(l)]), " lambda=", round(Lambda[[(l)]], 2), " DF=", round(workvals$DF), " stepH=", workvals$stepH, " diff=", round(diff, 2), sep = ""), "\n")
+    if (verbose) cat(paste("\n l=", (l), " pLogL=", round(ploglikes[(l)]), " AIC=", round(AIC[(l)]), " lambda=", round(Lambda[[(l)]], 2), " DF=", round(workvals$DF), " stepH=", workvals$stepH, " diff=", round(diff, 2), sep = ""), "\n")
   }
   
   return(list(thetas = thetas.lst, As = As.lst, ploglikes = ploglikes, Lambda = Lambda, AIC = AIC, r.iter = l, which.spec = which.spec))
@@ -718,8 +1083,54 @@ iterate <- function(init, lambda = 0, a = 2, n.iter = 40, which.spec = NULL, upd
 
 
 # NMSDEBoot ---------------------------------------------------------------
+#' Spectral bootstrap for NMSDE and NMCSDE estimates
+#'
+#' Multivariate spectral bootstrap (Berkowitz and Diebold, 1998) for pointwise
+#' confidence intervals of the spectral density matrices. For large \eqn{T},
+#' \eqn{Y_k \approx \hat f(\omega_k)^{1/2} \epsilon_k}{Y_k ~ f(w_k)^(1/2) e_k}
+#' with independent standard complex normal \eqn{\epsilon_k}{e_k}. Each
+#' bootstrap sample draws new \eqn{\epsilon_k}{e_k}, builds bootstrap DFTs
+#' from the Cholesky square root of \code{hatF}, and re-estimates the spectra
+#' with \code{\link{iterate}}.
+#'
+#' @param hatF \eqn{P^2 \times K \times M}{P^2 x K x M} array with the
+#'   vectorized spectral estimates of the \eqn{M} series (for example from an
+#'   NMCSDE fit; see the examples).
+#' @param nBoot Number of bootstrap samples.
+#' @param init List returned by \code{\link{initial}}.
+#' @param lambda Smoothing parameter passed to \code{\link{iterate}}. If
+#'   \code{update_lam = FALSE}, a vector of candidate values; the one with the
+#'   smallest final AIC is used for each bootstrap sample.
+#' @param theta_P2 Currently unused: the model (common or different bases) is
+#'   the one set up in \code{init}.
+#' @param update_lam Logical; update \eqn{\lambda} within the iterations (see
+#'   \code{\link{iterate}})?
+#' @param method \code{"collective"} (default) re-estimates all series jointly
+#'   (NMCSDE); \code{"separate"} re-estimates each series on its own (NMSDE).
+#' @param verbose Logical; print the progress of the iterations?
+#'
+#' @return A list of \eqn{P^2} arrays, one per vectorized spectral component,
+#'   each of dimension \eqn{nBoot \times K \times M}{nBoot x K x M}. Pointwise
+#'   percentile intervals are obtained with \code{apply(x, c(2, 3), quantile,
+#'   probs = c(0.025, 0.975))}.
+#' @references Berkowitz, J. and Diebold, F. X. (1998). Bootstrapping
+#'   multivariate spectra. \emph{Review of Economics and Statistics}, 80(4),
+#'   664--666. \doi{10.1162/003465398557753}
+#' @examples
+#' \donttest{
+#' init <- initial(dat$X1, nbasis = 10, R = 3)
+#' fit <- iterate(init, lambda = 1, n.iter = 5, verbose = FALSE)
+#' G <- tA2G(fit$thetas[[fit$r.iter]], fit$As[[fit$r.iter]], init)
+#' hatF <- array(apply(G, 3, inChol2spec, init = init),
+#'               dim = c(init$P^2, init$K, init$m))
+#' boot <- NMSDEBoot(hatF, nBoot = 2, init = init, lambda = 1,
+#'                   update_lam = TRUE)
+#' # 95% pointwise interval for the first spectral component of series 1
+#' ci <- apply(boot[[1]][, , 1, drop = FALSE], 2, quantile, probs = c(0.025, 0.975))
+#' }
 #' @export NMSDEBoot
-NMSDEBoot <- function(hatF, nBoot, init, lambda, theta_P2, update_lam, method = "collective") {
+NMSDEBoot <- function(hatF, nBoot, init, lambda, theta_P2, update_lam, method = "collective",
+                      verbose = FALSE) {
   omegas <- init$omegas
   P2 <- nrow(hatF)
 
@@ -777,39 +1188,38 @@ NMSDEBoot <- function(hatF, nBoot, init, lambda, theta_P2, update_lam, method = 
       for (t in 1:init$m) {
 
         # finding the best lambda
-        if (update_lam == F) { # (min AIC)
+        if (!update_lam) { # (min AIC)
           iter <- list()
           AIC <- rep(0, 0)
           for (l in 1:length(lambda)) {
-            iter[[l]] <- iterate(init, lambda = lambda[l], which.spec = t, update.lam = update_lam, tildeX = tildeXBoot)
+            iter[[l]] <- iterate(init, lambda = lambda[l], which.spec = t, update.lam = update_lam, tildeX = tildeXBoot, verbose = verbose)
             AIC.l <- unlist(iter[[l]])[substr(names(unlist(iter[[l]])), 1, 3) == "AIC"]
             AIC[l] <- AIC.l[length(AIC.l)]
           }
           res[[t]] <- iter[[which.min(AIC)]]
         } else { # update_lambda
-          iter <- iterate(init, lambda = lambda, which.spec = t, update.lam = update_lam, tildeX = tildeXBoot)
+          iter <- iterate(init, lambda = lambda, which.spec = t, update.lam = update_lam, tildeX = tildeXBoot, verbose = verbose)
           res[[t]] <- iter
         }
 
         # get hatF and save
         hatFBoot <- array(apply(tA2G(res[[t]]$thetas[[length(res[[t]]$thetas)]], res[[t]]$As[[length(res[[t]]$thetas)]], init), 3, inChol2spec, init), dim = c(init$P^2, init$K, 1))
-        error <- mean((hatFBoot[1, , 1] - trueF[1, , init$rnd[t]])^2)
         for (j in 1:P2) {
           bootcell[[j]][nb, , t] <- hatFBoot[j, , 1]
         }
       }
     } else {
-      if (update_lam == F) {
+      if (!update_lam) {
         iter <- list()
         AIC <- rep(0, 0)
         for (i in 1:length(lambda)) {
-          iter[[i]] <- iterate(init, lambda = lambda[i], update.lam = update_lam, tildeX = tildeXBoot)
+          iter[[i]] <- iterate(init, lambda = lambda[i], update.lam = update_lam, tildeX = tildeXBoot, verbose = verbose)
           AIC.i <- unlist(iter[[i]])[substr(names(unlist(iter[[i]])), 1, 3) == "AIC"]
           AIC[i] <- AIC.i[length(AIC.i)]
         }
         res <- iter[[which.min(AIC)]]
       } else {
-        iter <- iterate(init, lambda = lambda, update.lam = update_lam, tildeX = tildeXBoot)
+        iter <- iterate(init, lambda = lambda, update.lam = update_lam, tildeX = tildeXBoot, verbose = verbose)
         res <- iter
       }
 
@@ -826,9 +1236,29 @@ NMSDEBoot <- function(hatF, nBoot, init, lambda, theta_P2, update_lam, method = 
 # plot_sds ----------------------------------------------------------------
 
 # Plots estimate of the components spectral matrix and Trues
+#' Plot estimated spectral density matrices
+#'
+#' For each series, draws the \eqn{P^2} vectorized components of the final
+#' spectral estimate from \code{\link{iterate}} on a \eqn{P \times P}{P x P}
+#' grid of panels (real parts of the lower triangle, then imaginary parts;
+#' see \code{\link{Cholindexer}}). If \code{init} contains true spectra
+#' (argument \code{tru} of \code{\link{initial}}), they are added in blue.
+#' One page is drawn per series.
+#'
+#' @param res List returned by \code{\link{iterate}}.
+#' @param init List returned by \code{\link{initial}} and used to fit
+#'   \code{res}.
+#'
+#' @return Called for its side effect (plots); returns \code{NULL}
+#'   invisibly.
+#' @examples
+#' init <- initial(dat$X1, nbasis = 10, R = 3, tru = datPar$modelPar1)
+#' fit <- iterate(init, lambda = 1, n.iter = 3, verbose = FALSE)
+#' plot_sds(fit, init)
 #' @export plot_sds
 plot_sds <- function(res, init) {
-  par(mfrow = c(init$P, init$P), oma = c(0.5, 0.5, 2.5, 0.5))
+  oldpar <- par(mfrow = c(init$P, init$P), oma = c(0.5, 0.5, 2.5, 0.5))
+  on.exit(par(oldpar))
   if (!is.null(res$which.spec)) {
     init$m <- length(res$which.spec)
     if (!is.null(init$rnd)) init$rnd <- init$rnd[res$which.spec]
@@ -839,15 +1269,15 @@ plot_sds <- function(res, init) {
     for (j in 1:init$P^2) {
       
       spec_j <- inChol2spec(tA2G(res$thetas[[length(res$thetas)]], res$As[[length(res$As)]], init)[, , i], init)[j, ]
-      plot(init$omegas, spec_j, "l", xlab = "", ylab = "", main = j)
+      ylim <- range(spec_j, if (!is.null(init$rnd)) init$truspec[j, , init$rnd[i]])
+      plot(init$omegas, spec_j, "l", xlab = "", ylab = "", main = j, ylim = ylim)
       if (!is.null(init$rnd)) lines(init$omegas, init$truspec[j, , init$rnd[i]], type = "l", lty = 1, col = "blue")
-      title(ifelse(is.null(res$which.spec), i, res$which.spec[i]), dim(res$As), outer = TRUE)
-      ylim = c(0, max(init$truspec[j, , init$rnd[i]],spec_j))
+      title(ifelse(is.null(res$which.spec), i, res$which.spec[i]), outer = TRUE)
     }
   }
 }
 
 .onUnload <- function(libpath) {
-  library.dynam.unload("combinIT", libpath)
+  library.dynam.unload("NMSDE", libpath)
 }
 
